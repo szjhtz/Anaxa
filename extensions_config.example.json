@@ -38,5 +38,24 @@
       "description": "PostgreSQL database access"
     }
   },
-  "skills": {}
+  "skills": {
+    "nature-data": {
+      "enabled": true
+    },
+    "nature-figure": {
+      "enabled": true
+    },
+    "nature-paper2ppt": {
+      "enabled": true
+    },
+    "nature-polishing": {
+      "enabled": true
+    },
+    "fireworks-tech-graph": {
+      "enabled": true
+    },
+    "ai-research-writing": {
+      "enabled": true
+    }
+  }
 }
