@@ -300,6 +300,37 @@ export function extractClarificationPayload(message: Message) {
   };
 }
 
+export function findClarificationResponse(
+  messages: Message[],
+  clarificationMessage: Message,
+) {
+  const startIndex = messages.findIndex(
+    (message) =>
+      message === clarificationMessage ||
+      (message.id !== undefined && message.id === clarificationMessage.id),
+  );
+
+  if (startIndex < 0) {
+    return null;
+  }
+
+  for (let index = startIndex + 1; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) {
+      continue;
+    }
+    if (isClarificationToolMessage(message)) {
+      break;
+    }
+    if (message.type === "human") {
+      const response = extractTextFromMessage(message);
+      return response || null;
+    }
+  }
+
+  return null;
+}
+
 export function extractPresentFilesFromMessage(message: Message) {
   if (message.type !== "ai" || !hasPresentFiles(message)) {
     return [];

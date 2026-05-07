@@ -5,13 +5,13 @@ import {
   Conversation,
   ConversationContent,
 } from "@/components/ai-elements/conversation";
-import { Button } from "@/components/ui/button";
 import { useI18n } from "@/core/i18n/hooks";
 import {
   extractContentFromMessage,
   extractClarificationPayload,
   extractPresentFilesFromMessage,
   extractTextFromMessage,
+  findClarificationResponse,
   groupMessages,
   hasContent,
   hasPresentFiles,
@@ -26,9 +26,9 @@ import { cn } from "@/lib/utils";
 
 import { ArtifactFileList } from "../artifacts/artifact-file-list";
 import { StreamingIndicator } from "../streaming-indicator";
-import { usePromptInputController } from "@/components/ai-elements/prompt-input";
-import { useThread } from "./context";
 
+import { ClarificationCard } from "./clarification-card";
+import { useThread } from "./context";
 import { MarkdownContent } from "./markdown-content";
 import { MessageGroup } from "./message-group";
 import { MessageListItem } from "./message-list-item";
@@ -39,11 +39,13 @@ export function MessageList({
   className,
   threadId,
   thread,
+  runId,
   paddingBottom = 160,
 }: {
   className?: string;
   threadId: string;
   thread: BaseStream<AgentThreadState>;
+  runId?: string | null;
   paddingBottom?: number;
 }) {
   const { t } = useI18n();
@@ -51,6 +53,9 @@ export function MessageList({
   const updateSubtask = useUpdateSubtask();
   const { sendMessage } = useThread();
   const messages = thread.messages;
+  const lastAssistantMessageId = [...messages]
+    .reverse()
+    .find((message) => message.type === "ai")?.id;
 
   useEffect(() => {
     for (const message of messages) {
@@ -102,6 +107,12 @@ export function MessageList({
                   key={`${group.id}/${msg.id}`}
                   message={msg}
                   isLoading={thread.isLoading}
+                  runId={
+                    msg.type === "ai" && msg.id === lastAssistantMessageId
+                      ? runId
+                      : null
+                  }
+                  threadId={threadId}
                 />
               );
             });
@@ -109,12 +120,15 @@ export function MessageList({
             const message = group.messages[0];
             if (message) {
               const payload = extractClarificationPayload(message);
+              const resolvedAnswer = findClarificationResponse(messages, message);
               return (
                 <ClarificationCard
                   key={group.id}
                   payload={payload}
                   fallbackContent={extractContentFromMessage(message)}
                   onSubmit={sendMessage}
+                  resolvedAnswer={resolvedAnswer}
+                  isLoading={thread.isLoading}
                 />
               );
             }
@@ -212,58 +226,5 @@ export function MessageList({
         <div style={{ height: `${paddingBottom}px` }} />
       </ConversationContent>
     </Conversation>
-  );
-}
-
-function ClarificationCard({
-  payload,
-  fallbackContent,
-  onSubmit,
-}: {
-  payload:
-    | {
-        question?: string;
-        clarification_type?: string;
-        context?: string;
-        options?: string[];
-        allow_custom_input?: boolean;
-      }
-    | null;
-  fallbackContent: string;
-  onSubmit?: (text: string) => Promise<void>;
-}) {
-  const { textInput } = usePromptInputController();
-  const options = payload?.options ?? [];
-  const question = payload?.question ?? fallbackContent;
-  const context = payload?.context;
-
-  const handlePick = async (choice: string) => {
-    await onSubmit?.(choice);
-  };
-
-  const handleCustom = () => {
-    textInput.setInput("");
-    requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLTextAreaElement>("textarea[name='message']")
-        ?.focus();
-    });
-  };
-
-  return (
-    <div className="rounded-2xl border bg-background p-4">
-      {context && <div className="text-muted-foreground mb-2 text-sm">{context}</div>}
-      <div className="mb-3 text-sm font-medium">{question}</div>
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
-          <Button key={option} variant="secondary" onClick={() => void handlePick(option)}>
-            {option}
-          </Button>
-        ))}
-        <Button variant="outline" onClick={handleCustom}>
-          type something
-        </Button>
-      </div>
-    </div>
   );
 }

@@ -1,5 +1,13 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+
+SKILL_MD_FILE = "SKILL.md"
+
+
+class SkillCategory(StrEnum):
+    PUBLIC = "public"
+    CUSTOM = "custom"
 
 
 @dataclass
@@ -12,7 +20,7 @@ class Skill:
     skill_dir: Path
     skill_file: Path
     relative_path: Path  # Relative path from category root to skill directory
-    category: str  # 'public' or 'custom'
+    category: SkillCategory | str  # 'public' or 'custom'
     enabled: bool = False  # Whether this skill is enabled
 
     @property

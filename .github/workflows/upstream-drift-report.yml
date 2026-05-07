@@ -1,0 +1,72 @@
+name: Upstream Drift Report
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-drift-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch origin and upstream
+        run: |
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream https://github.com/bytedance/deer-flow.git
+          else
+            git remote add upstream https://github.com/bytedance/deer-flow.git
+          fi
+          git fetch origin main
+          git fetch upstream main
+
+      - name: Build drift report
+        run: |
+          BASE=$(git merge-base origin/main upstream/main)
+          COUNTS=$(git rev-list --left-right --count origin/main...upstream/main)
+          BEHIND=$(echo "$COUNTS" | awk '{print $2}')
+          AHEAD=$(echo "$COUNTS" | awk '{print $1}')
+          CHANGED=$(git diff --name-only "$BASE"..upstream/main | awk -F/ 'NF==1 {print $1} NF>1 {print $1"/"$2}' | sort -u)
+          {
+            echo "# MedrixFlow vs DeerFlow Drift Report"
+            echo
+            echo "- Origin main SHA: $(git rev-parse origin/main)"
+            echo "- Upstream main SHA: $(git rev-parse upstream/main)"
+            echo "- Merge base SHA: $BASE"
+            echo "- MedrixFlow ahead of upstream commits: $AHEAD"
+            echo "- MedrixFlow behind upstream commits: $BEHIND"
+            echo
+            echo "## Upstream top-level modules changed since merge-base"
+            if [ -n "$CHANGED" ]; then
+              echo "$CHANGED" | sed 's/^/- /'
+            else
+              echo "- No upstream file changes detected."
+            fi
+            echo
+            echo "## Suggested sync checklist"
+            echo "- Review runtime, gateway, frontend, and skills deltas before merging manually."
+            echo "- Do not force-reset main from automation."
+            echo "- Use this report as the monthly upstream catch-up input."
+          } | tee upstream-drift-report.md
+
+      - name: Publish job summary
+        run: cat upstream-drift-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload drift report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-drift-report
+          path: upstream-drift-report.md
+          retention-days: 30

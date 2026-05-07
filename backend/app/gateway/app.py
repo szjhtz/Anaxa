@@ -5,13 +5,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.gateway.config import get_gateway_config
+from app.gateway.deps import runtime_dependencies
 from app.gateway.routers import (
+    academic,
     agents,
     artifacts,
     channels,
     mcp,
     memory,
     models,
+    runs,
     setup,
     skills,
     suggestions,
@@ -59,7 +62,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("No IM channels configured or channel service failed to start")
 
-    yield
+    async with runtime_dependencies(app):
+        yield
 
     # Stop channel service on shutdown
     try:
@@ -105,6 +109,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
         redoc_url="/redoc",
         openapi_url="/openapi.json",
         openapi_tags=[
+            {
+                "name": "academic",
+                "description": "Structured academic literature retrieval, synthesis, and reference exports",
+            },
             {
                 "name": "models",
                 "description": "Operations for querying available AI models and their configurations",
@@ -158,6 +166,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
     # Models API is mounted at /api/models
     app.include_router(models.router)
 
+    # Academic research API is mounted at /api/academic
+    app.include_router(academic.router)
+
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)
 
@@ -175,6 +186,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Thread cleanup API is mounted at /api/threads/{thread_id}
     app.include_router(threads.router)
+
+    # Runs / feedback API is mounted at /api/threads/{thread_id}/runs
+    app.include_router(runs.router)
 
     # Agents API is mounted at /api/agents
     app.include_router(agents.router)

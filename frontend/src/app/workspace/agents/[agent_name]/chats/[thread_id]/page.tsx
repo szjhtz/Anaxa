@@ -40,7 +40,7 @@ export default function AgentChatPage() {
   const { threadId, isNewThread, setIsNewThread } = useThreadChat();
 
   const { showNotification } = useNotification();
-  const [thread, sendMessage] = useThreadStream({
+  const [thread, sendMessage, , , currentRunId] = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
     context: { ...settings.context, agent_name: agent_name },
     onStart: () => {
@@ -135,6 +135,7 @@ export default function AgentChatPage() {
                 className={cn("size-full", !isNewThread && "pt-10")}
                 threadId={threadId}
                 thread={thread}
+                runId={currentRunId}
               />
             </div>
 

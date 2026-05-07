@@ -1,7 +1,6 @@
 import type { BaseStream } from "@langchain/langgraph-sdk/react";
 import { createContext, useContext } from "react";
 
-import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { AgentThreadState } from "@/core/threads";
 
 export interface ThreadContextType {

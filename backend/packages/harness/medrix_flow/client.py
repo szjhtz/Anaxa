@@ -20,11 +20,7 @@ import json
 import logging
 import mimetypes
 import os
-import re
-import shutil
-import tempfile
 import uuid
-import zipfile
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +38,7 @@ from medrix_flow.config.app_config import get_app_config, reload_app_config
 from medrix_flow.config.extensions_config import ExtensionsConfig, SkillStateConfig, get_extensions_config, reload_extensions_config
 from medrix_flow.config.paths import get_paths
 from medrix_flow.models import create_chat_model
+from medrix_flow.skills.service import SkillService
 
 logger = logging.getLogger(__name__)
 
@@ -582,10 +579,10 @@ class MedrixFlowClient:
         Returns:
             Skill info dict, or None if not found.
         """
-        from medrix_flow.skills.loader import load_skills
-
-        skill = next((s for s in load_skills(enabled_only=False) if s.name == name), None)
-        if skill is None:
+        service = SkillService()
+        try:
+            skill = service.get_skill(name)
+        except FileNotFoundError:
             return None
         return {
             "name": skill.name,
@@ -609,33 +606,9 @@ class MedrixFlowClient:
             ValueError: If the skill is not found.
             OSError: If the config file cannot be written.
         """
-        from medrix_flow.skills.loader import load_skills
-
-        skills = load_skills(enabled_only=False)
-        skill = next((s for s in skills if s.name == name), None)
-        if skill is None:
-            raise ValueError(f"Skill '{name}' not found")
-
-        config_path = ExtensionsConfig.resolve_config_path()
-        if config_path is None:
-            raise FileNotFoundError("Cannot locate extensions_config.json. Set MEDRIX_FLOW_EXTENSIONS_CONFIG_PATH or ensure it exists in the project root.")
-
-        extensions_config = get_extensions_config()
-        extensions_config.skills[name] = SkillStateConfig(enabled=enabled)
-
-        config_data = {
-            "mcpServers": {n: s.model_dump() for n, s in extensions_config.mcp_servers.items()},
-            "skills": {n: {"enabled": sc.enabled} for n, sc in extensions_config.skills.items()},
-        }
-
-        self._atomic_write_json(config_path, config_data)
-
+        service = SkillService()
+        updated = service.update_skill_enabled(name, enabled=enabled)
         self._agent = None
-        reload_extensions_config()
-
-        updated = next((s for s in load_skills(enabled_only=False) if s.name == name), None)
-        if updated is None:
-            raise RuntimeError(f"Skill '{name}' disappeared after update")
         return {
             "name": updated.name,
             "description": updated.description,
@@ -657,56 +630,9 @@ class MedrixFlowClient:
             FileNotFoundError: If the file does not exist.
             ValueError: If the file is invalid.
         """
-        from medrix_flow.skills.loader import get_skills_root_path
-        from medrix_flow.skills.validation import _validate_skill_frontmatter
-
-        path = Path(skill_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Skill file not found: {skill_path}")
-        if not path.is_file():
-            raise ValueError(f"Path is not a file: {skill_path}")
-        if path.suffix != ".skill":
-            raise ValueError("File must have .skill extension")
-        if not zipfile.is_zipfile(path):
-            raise ValueError("File is not a valid ZIP archive")
-
-        skills_root = get_skills_root_path()
-        custom_dir = skills_root / "custom"
-        custom_dir.mkdir(parents=True, exist_ok=True)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            with zipfile.ZipFile(path, "r") as zf:
-                total_size = sum(info.file_size for info in zf.infolist())
-                if total_size > 100 * 1024 * 1024:
-                    raise ValueError("Skill archive too large when extracted (>100MB)")
-                for info in zf.infolist():
-                    if Path(info.filename).is_absolute() or ".." in Path(info.filename).parts:
-                        raise ValueError(f"Unsafe path in archive: {info.filename}")
-                zf.extractall(tmp_path)
-            for p in tmp_path.rglob("*"):
-                if p.is_symlink():
-                    p.unlink()
-
-            items = list(tmp_path.iterdir())
-            if not items:
-                raise ValueError("Skill archive is empty")
-
-            skill_dir = items[0] if len(items) == 1 and items[0].is_dir() else tmp_path
-
-            is_valid, message, skill_name = _validate_skill_frontmatter(skill_dir)
-            if not is_valid:
-                raise ValueError(f"Invalid skill: {message}")
-            if not re.fullmatch(r"[a-zA-Z0-9_-]+", skill_name):
-                raise ValueError(f"Invalid skill name: {skill_name}")
-
-            target = custom_dir / skill_name
-            if target.exists():
-                raise ValueError(f"Skill '{skill_name}' already exists")
-
-            shutil.copytree(skill_dir, target)
-
-        return {"success": True, "skill_name": skill_name, "message": f"Skill '{skill_name}' installed successfully"}
+        result = SkillService().install_skill_from_archive(skill_path)
+        self._agent = None
+        return result
 
     # ------------------------------------------------------------------
     # Public API — memory management

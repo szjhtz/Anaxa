@@ -1,12 +1,14 @@
 # MedrixFlow - Unified Development Environment
 
-.PHONY: help config config-upgrade check install verify dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config setup doctor config-upgrade check install verify dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
 
 PYTHON ?= python3
 
 help:
 	@echo "MedrixFlow Development Commands:"
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
+	@echo "  make setup           - Idempotent local setup wizard (creates missing config/env files)"
+	@echo "  make doctor          - Validate config, env vars, sandbox prerequisites, and DB writability"
 	@echo "  make config-upgrade  - Merge new fields from config.example.yaml into config.yaml"
 	@echo "  make check           - Check if all required tools are installed"
 	@echo "  make install         - Install all dependencies (frontend + backend dev group)"
@@ -31,6 +33,12 @@ help:
 
 config:
 	@$(PYTHON) ./scripts/configure.py
+
+setup:
+	@cd backend && uv run python ../scripts/setup_wizard.py
+
+doctor:
+	@cd backend && uv run python ../scripts/doctor.py
 
 config-upgrade:
 	@./scripts/config-upgrade.sh
@@ -58,8 +66,8 @@ install:
 verify:
 	@echo "Running backend checks (lint + test)..."
 	@cd backend && make lint && make test
-	@echo "Running frontend checks (lint + typecheck)..."
-	@cd frontend && pnpm lint && pnpm typecheck
+	@echo "Running frontend checks (lint + typecheck + unit tests)..."
+	@cd frontend && pnpm lint && pnpm typecheck && pnpm test:unit
 	@echo "Running frontend build check..."
 	@cd frontend && BETTER_AUTH_SECRET=local-dev-secret pnpm build
 	@echo "✓ Verification checks passed"

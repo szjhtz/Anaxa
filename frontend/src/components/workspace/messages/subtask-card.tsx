@@ -1,3 +1,4 @@
+import { formatDistanceToNow } from "date-fns";
 import {
   CheckCircleIcon,
   ChevronUp,
@@ -6,7 +7,6 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
 import { Streamdown } from "streamdown";
 
 import {

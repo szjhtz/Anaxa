@@ -4,6 +4,7 @@ version = "2.3.0"
 description = "MedrixFlow agent harness framework"
 requires-python = ">=3.12"
 dependencies = [
+    "aiosqlite>=0.21.0",
     "agent-sandbox>=0.0.19",
     "dotenv>=0.9.9",
     "httpx>=0.28.0",
@@ -28,6 +29,13 @@ dependencies = [
     "langchain-google-genai>=4.2.1",
     "langgraph-checkpoint-sqlite>=3.0.3",
     "langgraph-sdk>=0.1.51",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+    "statsmodels>=0.14.6",
+    "pyarrow>=24.0.0",
+    "anndata>=0.12.13",
+    "umap-learn>=0.5.12",
+    "gseapy>=1.2.1",
 ]
 
 [build-system]

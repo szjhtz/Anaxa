@@ -1,30 +1,33 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, expect, it } from "vitest";
 
 import { parseTaskToolResult } from "./result-parser";
 
-void test("parseTaskToolResult parses completed result", () => {
-  const parsed = parseTaskToolResult("Task Succeeded. Result: done");
-  assert.deepEqual(parsed, { status: "completed", result: "done" });
-});
+describe("parseTaskToolResult", () => {
+  it("parses completed result", () => {
+    expect(parseTaskToolResult("Task Succeeded. Result: done")).toEqual({
+      status: "completed",
+      result: "done",
+    });
+  });
 
-void test("parseTaskToolResult parses failed result", () => {
-  const parsed = parseTaskToolResult("Task failed. invalid input");
-  assert.deepEqual(parsed, { status: "failed", error: "invalid input" });
-});
+  it("parses failed result", () => {
+    expect(parseTaskToolResult("Task failed. invalid input")).toEqual({
+      status: "failed",
+      error: "invalid input",
+    });
+  });
 
-void test("parseTaskToolResult parses timeout as failed", () => {
-  const parsed = parseTaskToolResult("Task timed out after 120s");
-  assert.deepEqual(parsed, {
-    status: "failed",
-    error: "Task timed out after 120s",
+  it("parses timeout as failed", () => {
+    expect(parseTaskToolResult("Task timed out after 120s")).toEqual({
+      status: "failed",
+      error: "Task timed out after 120s",
+    });
+  });
+
+  it("falls back to in_progress", () => {
+    expect(parseTaskToolResult("")).toEqual({ status: "in_progress" });
+    expect(parseTaskToolResult("working...")).toEqual({
+      status: "in_progress",
+    });
   });
 });
-
-void test("parseTaskToolResult falls back to in_progress", () => {
-  assert.deepEqual(parseTaskToolResult(""), { status: "in_progress" });
-  assert.deepEqual(parseTaskToolResult("working..."), {
-    status: "in_progress",
-  });
-});
-

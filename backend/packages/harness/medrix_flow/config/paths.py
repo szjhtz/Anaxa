@@ -75,6 +75,16 @@ class Paths:
         return self.base_dir / "memory.json"
 
     @property
+    def runtime_db_file(self) -> Path:
+        """Path to the lightweight runtime persistence database."""
+        return self.base_dir / "runtime.sqlite3"
+
+    @property
+    def academic_db_file(self) -> Path:
+        """Path to the academic research persistence database."""
+        return self.base_dir / "academic.sqlite3"
+
+    @property
     def user_md_file(self) -> Path:
         """Path to the global user profile file: `{base_dir}/USER.md`."""
         return self.base_dir / "USER.md"

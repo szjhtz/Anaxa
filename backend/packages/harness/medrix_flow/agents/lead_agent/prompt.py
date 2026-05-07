@@ -1,7 +1,8 @@
 from datetime import datetime
+from functools import lru_cache
 
-from medrix_flow.config.agents_config import load_agent_soul
 from medrix_flow.agents.lead_agent.prompt_enhancements import VISUAL_SKILL_NAMES, get_visual_quality_prompt
+from medrix_flow.config.agents_config import load_agent_soul
 from medrix_flow.skills import load_skills
 
 
@@ -369,12 +370,39 @@ def _get_memory_context(agent_name: str | None = None) -> str:
         return ""
 
 
-def get_skills_prompt_section(available_skills: set[str] | None = None) -> str:
-    """Generate the skills prompt section with available skills list.
+@lru_cache(maxsize=16)
+def _render_skills_prompt_section(
+    container_base_path: str,
+    skill_items: tuple[tuple[str, str, str], ...],
+) -> str:
+    rendered_items = "\n".join(
+        f"    <skill>\n        <name>{name}</name>\n        <description>{description}</description>\n        <location>{location}</location>\n    </skill>"
+        for name, description, location in skill_items
+    )
+    skills_list = f"<available_skills>\n{rendered_items}\n</available_skills>"
+    return f"""<skill_system>
+You have access to skills that provide optimized workflows for specific tasks. Each skill contains best practices, frameworks, and references to additional resources.
 
-    Returns the <skill_system>...</skill_system> block listing all enabled skills,
-    suitable for injection into any agent's system prompt.
-    """
+**Progressive Loading Pattern:**
+1. When a user query matches a skill's use case, immediately call `read_file` on the skill's main file using the path attribute provided in the skill tag below
+2. Read and understand the skill's workflow and instructions
+3. The skill file contains references to external resources under the same folder
+4. Load referenced resources only when needed during execution
+5. Follow the skill's instructions precisely
+
+**Skills are located at:** {container_base_path}
+
+{skills_list}
+
+</skill_system>"""
+
+
+def clear_skills_system_prompt_cache() -> None:
+    _render_skills_prompt_section.cache_clear()
+
+
+def get_skills_prompt_section(available_skills: set[str] | None = None) -> str:
+    """Generate the skills prompt section with available skills list."""
     skills = load_skills(enabled_only=True)
 
     try:
@@ -391,26 +419,14 @@ def get_skills_prompt_section(available_skills: set[str] | None = None) -> str:
     if available_skills is not None:
         skills = [skill for skill in skills if skill.name in available_skills]
 
-    skill_items = "\n".join(
-        f"    <skill>\n        <name>{skill.name}</name>\n        <description>{skill.description}</description>\n        <location>{skill.get_container_file_path(container_base_path)}</location>\n    </skill>" for skill in skills
+    if not skills:
+        return ""
+
+    skill_items = tuple(
+        (skill.name, skill.description, skill.get_container_file_path(container_base_path))
+        for skill in skills
     )
-    skills_list = f"<available_skills>\n{skill_items}\n</available_skills>"
-
-    return f"""<skill_system>
-You have access to skills that provide optimized workflows for specific tasks. Each skill contains best practices, frameworks, and references to additional resources.
-
-**Progressive Loading Pattern:**
-1. When a user query matches a skill's use case, immediately call `read_file` on the skill's main file using the path attribute provided in the skill tag below
-2. Read and understand the skill's workflow and instructions
-3. The skill file contains references to external resources under the same folder
-4. Load referenced resources only when needed during execution
-5. Follow the skill's instructions precisely
-
-**Skills are located at:** {container_base_path}
-
-{skills_list}
-
-</skill_system>"""
+    return _render_skills_prompt_section(container_base_path, skill_items)
 
 
 def get_agent_soul(agent_name: str | None) -> str:

@@ -42,7 +42,7 @@ export default function NewAgentPage() {
   // Stable thread ID — all turns belong to the same thread
   const threadId = useMemo(() => uuid(), []);
 
-  const [thread, sendMessage] = useThreadStream({
+  const [thread, sendMessage, , , currentRunId] = useThreadStream({
     threadId: step === "chat" ? threadId : undefined,
     context: {
       mode: "flash",
@@ -205,6 +205,7 @@ export default function NewAgentPage() {
                 className="size-full pt-10"
                 threadId={threadId}
                 thread={thread}
+                runId={currentRunId}
               />
             </div>
 

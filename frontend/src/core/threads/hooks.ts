@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 
 import { getAPIClient } from "../api";
+import { completeThreadRun, registerThreadRun } from "../api/runs";
 import { getBackendBaseURL } from "../config";
 import { useI18n } from "../i18n/hooks";
 import type { FileInMessage } from "../messages/utils";
@@ -28,7 +29,7 @@ export type ThreadStreamOptions = {
   threadId?: string | null | undefined;
   context: LocalSettings["context"];
   isMock?: boolean;
-  onStart?: (threadId: string) => void;
+  onStart?: (threadId: string, runId?: string) => void;
   onFinish?: (state: AgentThreadState) => void;
   onToolEnd?: (event: ToolEndEvent) => void;
 };
@@ -75,9 +76,11 @@ export function useThreadStream({
   const { t } = useI18n();
   // Track the thread ID that is currently streaming to handle thread changes during streaming
   const [onStreamThreadId, setOnStreamThreadId] = useState(() => threadId);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   // Ref to track current thread ID across async callbacks without causing re-renders,
   // and to allow access to the current thread id in onUpdateEvent
   const threadIdRef = useRef<string | null>(threadId ?? null);
+  const currentRunIdRef = useRef<string | null>(null);
   const startedRef = useRef(false);
 
   const listeners = useRef({
@@ -97,21 +100,26 @@ export function useThreadStream({
       // Just reset for new thread creation when threadId becomes null/undefined
       startedRef.current = false;
       setOnStreamThreadId(normalizedThreadId);
+      setCurrentRunId(null);
+      currentRunIdRef.current = null;
+    } else if (normalizedThreadId !== threadIdRef.current) {
+      setCurrentRunId(null);
+      currentRunIdRef.current = null;
     }
     threadIdRef.current = normalizedThreadId;
   }, [threadId]);
 
-  const _handleOnStart = useCallback((id: string) => {
+  const _handleOnStart = useCallback((id: string, runId?: string) => {
     if (!startedRef.current) {
-      listeners.current.onStart?.(id);
+      listeners.current.onStart?.(id, runId);
       startedRef.current = true;
     }
   }, []);
 
   const handleStreamStart = useCallback(
-    (_threadId: string) => {
+    (_threadId: string, runId?: string) => {
       threadIdRef.current = _threadId;
-      _handleOnStart(_threadId);
+      _handleOnStart(_threadId, runId);
     },
     [_handleOnStart],
   );
@@ -126,8 +134,19 @@ export function useThreadStream({
     reconnectOnMount: true,
     fetchStateHistory: { limit: 1 },
     onCreated(meta) {
-      handleStreamStart(meta.thread_id);
+      handleStreamStart(meta.thread_id, meta.run_id);
+      setCurrentRunId(meta.run_id);
+      currentRunIdRef.current = meta.run_id;
       setOnStreamThreadId(meta.thread_id);
+      void registerThreadRun(meta.thread_id, meta.run_id, {
+        assistantId:
+          typeof context.agent_name === "string" && context.agent_name.length > 0
+            ? context.agent_name
+            : "lead_agent",
+        context,
+      }).catch(() => {
+        // Best-effort only. Older backends should not break streaming.
+      });
       // Optimistically add the new thread to the sidebar list so it's visible
       // immediately, even before the backend's threads.search returns it.
       queryClient.setQueriesData(
@@ -211,6 +230,13 @@ export function useThreadStream({
     },
     onError(error) {
       setOptimisticMessages([]);
+      const runId = currentRunIdRef.current;
+      const currentThreadId = threadIdRef.current;
+      if (runId && currentThreadId) {
+        void completeThreadRun(currentThreadId, runId, "error").catch(
+          () => undefined,
+        );
+      }
       if (isModelNotConfiguredError(error)) {
         toast.error(t.setup.noModelsConfigured, {
           id: "model-not-configured",
@@ -226,6 +252,13 @@ export function useThreadStream({
       toast.error(getStreamErrorMessage(error));
     },
     onFinish(state) {
+      const runId = currentRunIdRef.current;
+      const currentThreadId = threadIdRef.current;
+      if (runId && currentThreadId) {
+        void completeThreadRun(currentThreadId, runId, "success").catch(
+          () => undefined,
+        );
+      }
       listeners.current.onFinish?.(state.values);
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
     },
@@ -540,7 +573,7 @@ export function useThreadStream({
         } as typeof thread)
       : snapshotThread;
 
-  return [mergedThread, sendMessage, isUploading, isSubmitting] as const;
+  return [mergedThread, sendMessage, isUploading, isSubmitting, currentRunId] as const;
 }
 
 export function useThreads(

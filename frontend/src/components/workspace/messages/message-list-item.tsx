@@ -1,7 +1,7 @@
 import type { Message } from "@langchain/langgraph-sdk";
-import { FileIcon, Loader2Icon } from "lucide-react";
+import { FileIcon, Loader2Icon, ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { useParams } from "next/navigation";
-import { memo, useMemo, type ImgHTMLAttributes } from "react";
+import { memo, useEffect, useMemo, useState, type ImgHTMLAttributes } from "react";
 import rehypeKatex from "rehype-katex";
 
 import { Loader } from "@/components/ai-elements/loader";
@@ -18,6 +18,13 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { Task, TaskTrigger } from "@/components/ai-elements/task";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  deleteRunFeedback,
+  getRunFeedback,
+  putRunFeedback,
+  type FeedbackData,
+} from "@/core/api/feedback";
 import { resolveArtifactURL } from "@/core/artifacts/utils";
 import { useI18n } from "@/core/i18n/hooks";
 import {
@@ -33,21 +40,34 @@ import { cn } from "@/lib/utils";
 
 import { CopyButton } from "../copy-button";
 
+import { shouldShowRunFeedback } from "./feedback-visibility";
 import { MarkdownContent } from "./markdown-content";
 
 export function MessageListItem({
   className,
   message,
   isLoading,
+  runId,
+  threadId,
 }: {
   className?: string;
   message: Message;
   isLoading?: boolean;
+  runId?: string | null;
+  threadId: string;
 }) {
   const isHuman = message.type === "human";
+  const showFeedback = shouldShowRunFeedback({
+    messageType: message.type,
+    isLoading,
+    runId,
+  });
   return (
     <AIElementMessage
       className={cn("group/conversation-message relative w-full", className)}
+      data-testid={
+        !isHuman && runId ? "assistant-message-with-feedback" : undefined
+      }
       from={isHuman ? "user" : "assistant"}
     >
       <MessageContent
@@ -70,10 +90,101 @@ export function MessageListItem({
                 ""
               }
             />
+            {showFeedback && runId && (
+              <MessageFeedbackControls threadId={threadId} runId={runId} />
+            )}
           </div>
         </MessageToolbar>
       )}
     </AIElementMessage>
+  );
+}
+
+function MessageFeedbackControls({
+  threadId,
+  runId,
+}: {
+  threadId: string;
+  runId: string;
+}) {
+  const [feedback, setFeedback] = useState<FeedbackData | null>(null);
+  const [supported, setSupported] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSupported(true);
+    setFeedback(null);
+
+    void getRunFeedback(threadId, runId)
+      .then((value) => {
+        if (!cancelled) {
+          setFeedback(value);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSupported(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId, runId]);
+
+  if (!supported) {
+    return null;
+  }
+
+  const handleRate = async (rating: 1 | -1) => {
+    if (isSaving) {
+      return;
+    }
+    setIsSaving(true);
+    try {
+      if (feedback?.rating === rating) {
+        await deleteRunFeedback(threadId, runId);
+        setFeedback(null);
+      } else {
+        setFeedback(await putRunFeedback(threadId, runId, rating));
+      }
+    } catch {
+      setSupported(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+        data-testid="message-feedback-up"
+        aria-label="Thumbs up"
+        aria-pressed={feedback?.rating === 1}
+        disabled={isSaving}
+        className={cn(feedback?.rating === 1 && "text-primary bg-primary/10 hover:bg-primary/15")}
+        onClick={() => void handleRate(1)}
+      >
+        <ThumbsUpIcon size={12} />
+      </Button>
+      <Button
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+        data-testid="message-feedback-down"
+        aria-label="Thumbs down"
+        aria-pressed={feedback?.rating === -1}
+        disabled={isSaving}
+        className={cn(feedback?.rating === -1 && "text-primary bg-primary/10 hover:bg-primary/15")}
+        onClick={() => void handleRate(-1)}
+      >
+        <ThumbsDownIcon size={12} />
+      </Button>
+    </>
   );
 }
 

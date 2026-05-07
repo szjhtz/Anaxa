@@ -34,7 +34,7 @@ export default function ChatPage() {
 
   const { showNotification } = useNotification();
 
-  const [thread, sendMessage, isUploading] = useThreadStream({
+  const [thread, sendMessage, isUploading, , currentRunId] = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
     context: settings.context,
     isMock,
@@ -106,6 +106,7 @@ export default function ChatPage() {
                 className={cn("size-full", !isNewThread && "pt-12")}
                 threadId={threadId}
                 thread={thread}
+                runId={currentRunId}
               />
             </div>
             <div className="absolute right-0 bottom-0 left-0 z-30 flex justify-center px-4">
