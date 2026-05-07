@@ -54,3 +54,5 @@ web/
 backend/Dockerfile.langgraph
 config.yaml.bak
 .obsidian/
+# Added by code-review-graph
+.code-review-graph/
