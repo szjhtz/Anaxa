@@ -143,7 +143,8 @@ MedrixFlow 是面向开发者和技术团队的 **全栈 AI 代理编排平台**
 
 1. **LangGraph dev 服务器线程持久化**: 使用内存 + pickle 存储，服务重启会丢失线程。生产环境应用 PostgreSQL。
 2. **BETTER_AUTH_SECRET**: 前端构建必需此环境变量，认证功能本身尚未启用。
-3. **Demo 数据**: `frontend/public/demo/threads/` 保留了 13 个原 DeerFlow 演示线程数据。
+<!-- 说明: 此条记录的是上游开源项目遗留的 demo 数据状态，现已清理，保留条目以备审计追溯 -->
+3. **Demo 数据**: `frontend/public/demo/threads/` 保留了 13 个上游演示线程数据。
 4. **同名技能冲突**: public/custom 同名技能 UI 区分问题已识别但暂时保留。
 5. **后端测试超时**: 完整测试套件可能超过 3 分钟。
 6. **日志警告**: `Dropped unsupported LangGraph stream mode(s): tools` 不影响功能。

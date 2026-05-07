@@ -1,6 +1,6 @@
 ---
 name: claude-to-medrix_flow
-description: "Interact with MedrixFlow AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to MedrixFlow for research/analysis, start a MedrixFlow conversation thread, check MedrixFlow status or health, list available models/skills/agents in MedrixFlow, manage MedrixFlow memory, upload files to MedrixFlow threads, or delegate complex research tasks to MedrixFlow. Also use when the user mentions medrix_flow, deer flow, or wants to run a deep research task that MedrixFlow can handle."
+description: "Interact with MedrixFlow AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to MedrixFlow for research/analysis, start a MedrixFlow conversation thread, check MedrixFlow status or health, list available models/skills/agents in MedrixFlow, manage MedrixFlow memory, upload files to MedrixFlow threads, or delegate complex research tasks to MedrixFlow. Also use when the user mentions medrix_flow or wants to run a deep research task that MedrixFlow can handle."
 ---
 
 # MedrixFlow Skill

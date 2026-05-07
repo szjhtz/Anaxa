@@ -12,7 +12,7 @@
 
 1. `docs/CODE_CHANGE_SUMMARY_BY_FILE.md` (939 行) — 一次性 diff 记录文档，记录 citations 系统移除的完整 diff。代码已合并后此文件不再有维护价值。
 2. `docs/SKILL_NAME_CONFLICT_FIX.md` (865 行) — 技能名称冲突修复的完整改动文档，作为一次性改动说明已完成使命。
-3. `frontend/public/demo/threads/` (13 个演示线程) — 原 DeerFlow 的演示数据，MedrixFlow 上下文中无使用场景。
+3. `frontend/public/demo/threads/` (13 个演示线程) — 上游遗留的演示数据，MedrixFlow 上下文中无使用场景。
 4. `.context-handoff.md` (372 行) — AI 上下文交接文件，属于开发过程产物，不应随仓库分发。
 5. `frontend/src/app/mock/` — Mock 页面目录，仅开发调试用。
 6. `README_en.md` — 英文 README 与中文 README.md 内容高度重复。
@@ -27,7 +27,7 @@
 - `.context-handoff.md` — AI 上下文交接产物
 - `medrix-flow.code-workspace` — VS Code workspace 配置
 - `.hintrc` — 开发提示配置
-- `frontend/public/demo/threads/` (13 个演示线程, ~13MB) — DeerFlow 演示数据
+- `frontend/public/demo/threads/` (13 个演示线程, ~13MB) — 上游遗留的演示数据
 - `frontend/src/app/mock/` (6 个 mock API 路由) — 静态网站模式 mock
 - `frontend/scripts/save-demo.js` — demo 数据保存脚本
 - `scripts/tool-error-degradation-detection.sh` — 未被引用的诊断脚本
@@ -45,7 +45,8 @@
 
 ## 2026-03-XX — Citations 系统完整移除
 
-**问题描述**: 移除继承自 DeerFlow 的 citations（引用）系统，简化前后端代码。
+<!-- 说明: 此条目记录历史重构动作，citations 系统是从上游开源项目继承的功能 -->
+**问题描述**: 移除继承自上游的 citations（引用）系统，简化前后端代码。
 
 **根因分析**: citations 系统在 MedrixFlow 场景中维护成本高但使用价值低。包含前端解析/渲染组件、后端 prompt 注入和 artifact 下载处理等多层耦合代码。
 
