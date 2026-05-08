@@ -194,13 +194,17 @@ export function ArtifactFileDetail({
               </Tooltip>
             )}
             {!isWriteFile && (
-              <a href={urlOfArtifact({ filepath, threadId })} target="_blank">
-                <ArtifactAction
-                  icon={SquareArrowOutUpRightIcon}
-                  label={t.common.openInNewWindow}
-                  tooltip={t.common.openInNewWindow}
-                />
-              </a>
+              <ArtifactAction asChild tooltip={t.common.openInNewWindow}>
+                <a
+                  href={urlOfArtifact({ filepath, threadId })}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={t.common.openInNewWindow}
+                >
+                  <SquareArrowOutUpRightIcon className="size-4" />
+                  <span className="sr-only">{t.common.openInNewWindow}</span>
+                </a>
+              </ArtifactAction>
             )}
             {isCodeFile && (
               <ArtifactAction
@@ -220,16 +224,17 @@ export function ArtifactFileDetail({
               />
             )}
             {!isWriteFile && (
-              <a
-                href={urlOfArtifact({ filepath, threadId, download: true })}
-                target="_blank"
-              >
-                <ArtifactAction
-                  icon={DownloadIcon}
-                  label={t.common.download}
-                  tooltip={t.common.download}
-                />
-              </a>
+              <ArtifactAction asChild tooltip={t.common.download}>
+                <a
+                  href={urlOfArtifact({ filepath, threadId, download: true })}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={t.common.download}
+                >
+                  <DownloadIcon className="size-4" />
+                  <span className="sr-only">{t.common.download}</span>
+                </a>
+              </ArtifactAction>
             )}
             <ArtifactAction
               icon={XIcon}

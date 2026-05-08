@@ -1,5 +1,5 @@
 import { DownloadIcon, LoaderIcon, PackageIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,24 @@ export function ArtifactFileList({
   const { t } = useI18n();
   const { select: selectArtifact, setOpen } = useArtifacts();
   const [installingFile, setInstallingFile] = useState<string | null>(null);
+  const [refreshFeedbackActive, setRefreshFeedbackActive] = useState(false);
+
+  useEffect(() => {
+    if (isRefreshing) {
+      setRefreshFeedbackActive(true);
+      return;
+    }
+
+    if (!refreshFeedbackActive) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setRefreshFeedbackActive(false);
+    }, 220);
+
+    return () => window.clearTimeout(timeout);
+  }, [isRefreshing, refreshFeedbackActive]);
 
   const handleClick = useCallback(
     (filepath: string) => {
@@ -77,17 +95,35 @@ export function ArtifactFileList({
     [threadId, installingFile],
   );
 
+  const handleRefreshClick = useCallback(() => {
+    if (!onRefresh || isRefreshing) {
+      return;
+    }
+
+    setRefreshFeedbackActive(true);
+    onRefresh();
+  }, [isRefreshing, onRefresh]);
+
   return (
     <ul className={cn("flex w-full flex-col gap-4", className)}>
       <li className="flex justify-end">
         <Button
+          className={cn(
+            "transition-all duration-150 active:scale-95",
+            refreshFeedbackActive &&
+              "border-primary/35 bg-primary/8 text-primary shadow-[0_0_0_3px_rgba(8,145,178,0.08)]",
+          )}
           variant="outline"
           size="sm"
-          onClick={onRefresh}
+          onClick={handleRefreshClick}
           disabled={!onRefresh || isRefreshing}
         >
           <RefreshCwIcon
-            className={cn("size-4", isRefreshing && "animate-spin")}
+            className={cn(
+              "size-4 transition-transform duration-150",
+              refreshFeedbackActive && "scale-90",
+              isRefreshing && "animate-spin",
+            )}
           />
           {t.common.refresh}
         </Button>
@@ -119,7 +155,7 @@ export function ArtifactFileList({
             <CardDescription className="pl-8 text-xs">
               {getFileExtensionDisplayName(file)} file
             </CardDescription>
-            <CardAction>
+            <CardAction className="flex items-center gap-1 self-center">
               {file.endsWith(".skill") && (
                 <Button
                   variant="ghost"
@@ -134,20 +170,21 @@ export function ArtifactFileList({
                   {t.common.install}
                 </Button>
               )}
-              <a
-                href={urlOfArtifact({
-                  filepath: file,
-                  threadId: threadId,
-                  download: true,
-                })}
-                target="_blank"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Button variant="ghost">
+              <Button asChild variant="ghost">
+                <a
+                  href={urlOfArtifact({
+                    filepath: file,
+                    threadId: threadId,
+                    download: true,
+                  })}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <DownloadIcon className="size-4" />
                   {t.common.download}
-                </Button>
-              </a>
+                </a>
+              </Button>
             </CardAction>
           </CardHeader>
         </Card>

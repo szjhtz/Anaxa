@@ -109,7 +109,7 @@ export default function ChatPage() {
                 runId={currentRunId}
               />
             </div>
-            <div className="absolute right-0 bottom-0 left-0 z-30 flex justify-center px-4">
+            <div className="absolute right-0 bottom-0 left-0 z-30 flex justify-center px-4 pb-2">
               <div
                 className={cn(
                   "relative w-full",

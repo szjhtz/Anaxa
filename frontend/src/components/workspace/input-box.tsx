@@ -631,7 +631,7 @@ export function InputBox({
         </div>
       )}
       {!isNewThread && (
-        <div className="bg-background absolute right-0 -bottom-[17px] left-0 z-0 h-4"></div>
+        <div className="bg-background pointer-events-none absolute inset-x-0 top-full z-0 h-2"></div>
       )}
       </PromptInput>
 
