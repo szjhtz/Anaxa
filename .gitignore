@@ -61,3 +61,11 @@ config.yaml.bak
 finish.md
 finish2.md
 security-audit-plan.md
+
+# Local planning / audit scratch files
+.mcp.json
+task_plan.md
+findings.md
+progress.md
+deerflow_last_commit_files.txt
+docs/debug-log.md
