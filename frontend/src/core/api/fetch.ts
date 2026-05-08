@@ -2,9 +2,9 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 export async function fetchWithTimeout(
   input: RequestInfo | URL,
-  init?: RequestInit & { timeoutMs?: number },
+  init?: RequestInit & { timeoutMs?: number; timeoutErrorMessage?: string },
 ): Promise<Response> {
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchInit } = init ?? {};
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, timeoutErrorMessage, ...fetchInit } = init ?? {};
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -13,9 +13,8 @@ export async function fetchWithTimeout(
     return await fetch(input, { ...fetchInit, signal: controller.signal });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error(
-        `Request timed out after ${(timeoutMs / 1000).toFixed(0)}s — the backend service may be unavailable`,
-      );
+      const fallbackMessage = `Request timed out after ${(timeoutMs / 1000).toFixed(0)}s — the backend service may be unavailable`;
+      throw new Error(timeoutErrorMessage || fallbackMessage);
     }
     throw err;
   } finally {

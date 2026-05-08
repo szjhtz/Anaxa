@@ -12,6 +12,9 @@ GOOGLE_IMAGE_SMOKE_IMAGE_SIZE = "1K"
 GOOGLE_IMAGE_TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 GOOGLE_IMAGE_RETRY_DELAYS_SECONDS = (1.0, 3.0)
 GOOGLE_IMAGE_MAX_ATTEMPTS = 3
+GOOGLE_SETTINGS_SMOKE_TIMEOUT_SECONDS = 5
+GOOGLE_SETTINGS_SMOKE_RETRY_DELAYS_SECONDS = (1.0,)
+GOOGLE_SETTINGS_SMOKE_MAX_ATTEMPTS = 2
 
 
 @dataclass(slots=True)
@@ -28,11 +31,13 @@ class GoogleImageRequestError(RuntimeError):
         status_code: int | None = None,
         retry_count: int = 0,
         payload: dict[str, Any] | None = None,
+        transient: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.retry_count = retry_count
         self.payload = payload or {}
+        self.transient = transient
 
 
 def build_google_generation_request(
@@ -165,6 +170,8 @@ def execute_google_image_request(
     image_size: str,
     timeout_seconds: int,
     force_image_size: bool = False,
+    max_attempts: int = GOOGLE_IMAGE_MAX_ATTEMPTS,
+    retry_delays_seconds: tuple[float, ...] = GOOGLE_IMAGE_RETRY_DELAYS_SECONDS,
     sleep_fn: Any = time.sleep,
 ) -> GoogleImageRequestResult:
     url, request_payload = build_google_generation_request(
@@ -177,7 +184,7 @@ def execute_google_image_request(
     )
 
     retry_count = 0
-    for attempt in range(GOOGLE_IMAGE_MAX_ATTEMPTS):
+    for attempt in range(max_attempts):
         try:
             response = requests_module.post(
                 url,
@@ -189,13 +196,14 @@ def execute_google_image_request(
                 timeout=timeout_seconds,
             )
         except requests.exceptions.Timeout as exc:
-            if attempt < GOOGLE_IMAGE_MAX_ATTEMPTS - 1:
-                sleep_fn(GOOGLE_IMAGE_RETRY_DELAYS_SECONDS[min(attempt, len(GOOGLE_IMAGE_RETRY_DELAYS_SECONDS) - 1)])
+            if attempt < max_attempts - 1:
+                sleep_fn(retry_delays_seconds[min(attempt, len(retry_delays_seconds) - 1)])
                 retry_count += 1
                 continue
             raise GoogleImageRequestError(
                 format_google_timeout_message(timeout_seconds),
                 retry_count=retry_count,
+                transient=True,
             ) from exc
         except requests.exceptions.RequestException as exc:
             raise GoogleImageRequestError(
@@ -210,8 +218,8 @@ def execute_google_image_request(
             )
 
         error_payload = _safe_response_json(response)
-        if response.status_code in GOOGLE_IMAGE_TRANSIENT_STATUS_CODES and attempt < GOOGLE_IMAGE_MAX_ATTEMPTS - 1:
-            sleep_fn(GOOGLE_IMAGE_RETRY_DELAYS_SECONDS[min(attempt, len(GOOGLE_IMAGE_RETRY_DELAYS_SECONDS) - 1)])
+        if response.status_code in GOOGLE_IMAGE_TRANSIENT_STATUS_CODES and attempt < max_attempts - 1:
+            sleep_fn(retry_delays_seconds[min(attempt, len(retry_delays_seconds) - 1)])
             retry_count += 1
             continue
 
@@ -220,9 +228,32 @@ def execute_google_image_request(
             status_code=response.status_code,
             retry_count=retry_count,
             payload=error_payload,
+            transient=response.status_code in GOOGLE_IMAGE_TRANSIENT_STATUS_CODES,
         )
 
     raise GoogleImageRequestError("Google AI Studio request failed without a response payload.")
+
+
+def execute_google_settings_smoke_request(
+    *,
+    requests_module: Any,
+    api_key: str,
+    sleep_fn: Any = time.sleep,
+) -> GoogleImageRequestResult:
+    return execute_google_image_request(
+        requests_module=requests_module,
+        api_key=api_key,
+        model=GOOGLE_IMAGE_SMOKE_MODEL,
+        prompt_text=GOOGLE_IMAGE_SMOKE_PROMPT,
+        inline_parts=[],
+        aspect_ratio="1:1",
+        image_size=GOOGLE_IMAGE_SMOKE_IMAGE_SIZE,
+        timeout_seconds=GOOGLE_SETTINGS_SMOKE_TIMEOUT_SECONDS,
+        force_image_size=True,
+        max_attempts=GOOGLE_SETTINGS_SMOKE_MAX_ATTEMPTS,
+        retry_delays_seconds=GOOGLE_SETTINGS_SMOKE_RETRY_DELAYS_SECONDS,
+        sleep_fn=sleep_fn,
+    )
 
 
 def _append_google_detail(prefix: str, detail: str | None) -> str:

@@ -23,12 +23,11 @@ from medrix_flow.setup.service import (
 )
 from medrix_flow.setup.security import validate_optional_base_url, validate_setup_model_provider
 from medrix_flow.utils.google_image import (
-    GOOGLE_IMAGE_SMOKE_IMAGE_SIZE,
     GOOGLE_IMAGE_SMOKE_MODEL,
-    GOOGLE_IMAGE_SMOKE_PROMPT,
     GoogleImageRequestError,
     build_google_image_smoke_request,
     execute_google_image_request,
+    execute_google_settings_smoke_request,
     has_google_image_content,
     summarize_google_image_response,
 )
@@ -60,6 +59,15 @@ class ImageProviderTestRequest(BaseModel):
 class TestResult(BaseModel):
     success: bool
     message: str
+
+
+GOOGLE_SETTINGS_SMOKE_SUCCESS_MESSAGE = (
+    "Google AI Studio quick smoke test succeeded. "
+    "The API key and provider are reachable. This fast test does not validate the configured production model."
+)
+GOOGLE_SETTINGS_SMOKE_NO_IMAGE_MESSAGE = (
+    "Google AI Studio quick smoke test reached the provider, but no image content was returned."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -192,10 +200,10 @@ async def test_tool_key(req: TestToolKeyRequest) -> TestResult:
                 requests_module=http_requests,
                 api_key=api_key,
                 model=GOOGLE_IMAGE_SMOKE_MODEL,
-                prompt_text=GOOGLE_IMAGE_SMOKE_PROMPT,
+                prompt_text="Generate a simple blue scientific icon on a white background.",
                 inline_parts=[],
                 aspect_ratio="1:1",
-                image_size=GOOGLE_IMAGE_SMOKE_IMAGE_SIZE,
+                image_size="1K",
                 timeout_seconds=30,
                 force_image_size=True,
             )
@@ -230,32 +238,25 @@ async def test_image_provider(req: ImageProviderTestRequest) -> TestResult:
     model = req.model.strip()
     api_key = req.api_key.strip()
     try:
-        if not model:
-            return TestResult(success=False, message="Image provider test requires a model.")
         if not api_key:
             return TestResult(success=False, message="Image provider test requires an API key.")
 
         if provider == IMAGE_PROVIDER_GOOGLE:
-            result = execute_google_image_request(
+            result = execute_google_settings_smoke_request(
                 requests_module=requests,
                 api_key=api_key,
-                model=model,
-                prompt_text=GOOGLE_IMAGE_SMOKE_PROMPT,
-                inline_parts=[],
-                aspect_ratio="1:1",
-                image_size=GOOGLE_IMAGE_SMOKE_IMAGE_SIZE,
-                timeout_seconds=30,
-                force_image_size=True,
             )
             if has_google_image_content(result.payload):
-                return TestResult(success=True, message="Google AI Studio API key is valid for image generation.")
+                return TestResult(success=True, message=GOOGLE_SETTINGS_SMOKE_SUCCESS_MESSAGE)
             summary = summarize_google_image_response(result.payload)
             return TestResult(
                 success=False,
-                message=f"Google AI Studio key was accepted, but no image content was returned. {summary}",
+                message=f"{GOOGLE_SETTINGS_SMOKE_NO_IMAGE_MESSAGE} {summary}",
             )
 
         if provider == IMAGE_PROVIDER_OPENAI:
+            if not model:
+                return TestResult(success=False, message="Image provider test requires a model.")
             validate_optional_base_url(req.base_url)
             base_url = normalize_base_url(req.base_url)
             if not base_url:
@@ -287,6 +288,8 @@ async def test_image_provider(req: ImageProviderTestRequest) -> TestResult:
         return TestResult(success=False, message=f"Unknown image provider: {provider}")
     except GoogleImageRequestError as e:
         logger.info("Image provider test for %s failed: %s", provider, e)
+        if provider == IMAGE_PROVIDER_GOOGLE:
+            return TestResult(success=False, message=f"Google AI Studio quick smoke test failed. {str(e)[:500]}")
         return TestResult(success=False, message=str(e)[:500])
     except Exception as e:
         logger.info("Image provider test for %s failed: %s", provider, e)

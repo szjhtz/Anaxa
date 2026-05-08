@@ -26,6 +26,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/core/i18n/hooks";
 import {
+  canTestImageProvider,
   getActiveImageProviderMissingFields,
   normalizeImageProviderBaseUrl,
 } from "@/core/setup/image-generation";
@@ -708,13 +709,13 @@ function ImageProviderCard({
   const [showKey, setShowKey] = useState(false);
 
   const handleTest = () => {
-    if (!config.api_key || !config.model) return;
+    if (!canTestImageProvider(config)) return;
     setTestStatus("loading");
     testMutation.mutate(
       {
         provider: config.provider,
-        model: config.model,
-        api_key: config.api_key,
+        model: config.model ?? "",
+        api_key: config.api_key ?? "",
         base_url: normalizeImageProviderBaseUrl(config.base_url),
       },
       {
@@ -729,11 +730,7 @@ function ImageProviderCard({
       },
     );
   };
-  const isTestDisabled =
-    testStatus === "loading" ||
-    !config.api_key ||
-    !config.model ||
-    (config.provider === "openai-compatible" && !normalizeImageProviderBaseUrl(config.base_url));
+  const isTestDisabled = testStatus === "loading" || !canTestImageProvider(config);
 
   return (
     <div className={`bg-muted/40 space-y-3 rounded-lg border p-4 ${active ? "border-primary/60" : ""}`}>

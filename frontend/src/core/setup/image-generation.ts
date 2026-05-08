@@ -1,4 +1,8 @@
-import type { ImageGenerationConfig, ImageProviderKind } from "./types";
+import type {
+  ImageGenerationConfig,
+  ImageProviderConfig,
+  ImageProviderKind,
+} from "./types";
 
 export type ImageProviderField = "model" | "api_key" | "base_url";
 
@@ -26,4 +30,15 @@ export function getActiveImageProviderMissingFields(
     ...(!normalizeImageProviderBaseUrl(config.openai_compatible.base_url) ? ["base_url" as const] : []),
     ...(!config.openai_compatible.api_key?.trim() ? ["api_key" as const] : []),
   ];
+}
+
+export function canTestImageProvider(config: ImageProviderConfig): boolean {
+  if (config.provider === "google-ai-studio") {
+    return Boolean(config.api_key?.trim());
+  }
+  return Boolean(
+    config.api_key?.trim()
+      && config.model?.trim()
+      && normalizeImageProviderBaseUrl(config.base_url),
+  );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canTestImageProvider,
   getActiveImageProviderMissingFields,
   normalizeImageProviderBaseUrl,
 } from "./image-generation";
@@ -54,5 +55,19 @@ describe("image generation setup helpers", () => {
       "base_url",
       "api_key",
     ]);
+  });
+
+  it("allows google smoke tests with only an API key", () => {
+    const config = makeConfig("google-ai-studio");
+    config.google_ai_studio.model = null;
+
+    expect(canTestImageProvider(config.google_ai_studio)).toBe(true);
+  });
+
+  it("still requires model and base URL for openai-compatible smoke tests", () => {
+    const config = makeConfig("openai-compatible");
+    config.openai_compatible.model = null;
+
+    expect(canTestImageProvider(config.openai_compatible)).toBe(false);
   });
 });
