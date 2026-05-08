@@ -67,8 +67,8 @@ export async function testImageProvider(req: TestImageProviderRequest): Promise<
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
-    timeoutMs: 15_000,
-    timeoutErrorMessage: "Quick smoke test timed out. Please retry later.",
+    timeoutMs: 125_000,
+    timeoutErrorMessage: "Current model validation timed out. Please retry later.",
   });
   if (!res.ok) throw await buildApiError(res, `Test request failed: ${res.status}`);
   return res.json() as Promise<TestResult>;

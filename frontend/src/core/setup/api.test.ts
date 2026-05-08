@@ -63,8 +63,8 @@ describe("setup api", () => {
           api_key: "sk-test",
           base_url: "https://images.example.com/v1",
         }),
-        timeoutMs: 15_000,
-        timeoutErrorMessage: "Quick smoke test timed out. Please retry later.",
+        timeoutMs: 125_000,
+        timeoutErrorMessage: "Current model validation timed out. Please retry later.",
       }),
     );
   });

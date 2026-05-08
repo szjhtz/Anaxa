@@ -57,11 +57,11 @@ describe("image generation setup helpers", () => {
     ]);
   });
 
-  it("allows google smoke tests with only an API key", () => {
+  it("requires model for google model validation tests", () => {
     const config = makeConfig("google-ai-studio");
     config.google_ai_studio.model = null;
 
-    expect(canTestImageProvider(config.google_ai_studio)).toBe(true);
+    expect(canTestImageProvider(config.google_ai_studio)).toBe(false);
   });
 
   it("still requires model and base URL for openai-compatible smoke tests", () => {

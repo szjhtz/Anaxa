@@ -12,9 +12,9 @@ GOOGLE_IMAGE_SMOKE_IMAGE_SIZE = "1K"
 GOOGLE_IMAGE_TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 GOOGLE_IMAGE_RETRY_DELAYS_SECONDS = (1.0, 3.0)
 GOOGLE_IMAGE_MAX_ATTEMPTS = 3
-GOOGLE_SETTINGS_SMOKE_TIMEOUT_SECONDS = 5
-GOOGLE_SETTINGS_SMOKE_RETRY_DELAYS_SECONDS = (1.0,)
-GOOGLE_SETTINGS_SMOKE_MAX_ATTEMPTS = 2
+GOOGLE_SETTINGS_VALIDATION_TIMEOUT_SECONDS = 60
+GOOGLE_SETTINGS_VALIDATION_RETRY_DELAYS_SECONDS = (1.0,)
+GOOGLE_SETTINGS_VALIDATION_MAX_ATTEMPTS = 2
 
 
 @dataclass(slots=True)
@@ -234,24 +234,25 @@ def execute_google_image_request(
     raise GoogleImageRequestError("Google AI Studio request failed without a response payload.")
 
 
-def execute_google_settings_smoke_request(
+def execute_google_settings_validation_request(
     *,
     requests_module: Any,
     api_key: str,
+    model: str,
     sleep_fn: Any = time.sleep,
 ) -> GoogleImageRequestResult:
     return execute_google_image_request(
         requests_module=requests_module,
         api_key=api_key,
-        model=GOOGLE_IMAGE_SMOKE_MODEL,
+        model=model,
         prompt_text=GOOGLE_IMAGE_SMOKE_PROMPT,
         inline_parts=[],
         aspect_ratio="1:1",
         image_size=GOOGLE_IMAGE_SMOKE_IMAGE_SIZE,
-        timeout_seconds=GOOGLE_SETTINGS_SMOKE_TIMEOUT_SECONDS,
+        timeout_seconds=GOOGLE_SETTINGS_VALIDATION_TIMEOUT_SECONDS,
         force_image_size=True,
-        max_attempts=GOOGLE_SETTINGS_SMOKE_MAX_ATTEMPTS,
-        retry_delays_seconds=GOOGLE_SETTINGS_SMOKE_RETRY_DELAYS_SECONDS,
+        max_attempts=GOOGLE_SETTINGS_VALIDATION_MAX_ATTEMPTS,
+        retry_delays_seconds=GOOGLE_SETTINGS_VALIDATION_RETRY_DELAYS_SECONDS,
         sleep_fn=sleep_fn,
     )
 

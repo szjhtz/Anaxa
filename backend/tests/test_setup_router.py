@@ -8,9 +8,10 @@ import requests
 from app.gateway.routers import setup
 
 
-GOOGLE_SMOKE_SUCCESS_MESSAGE = (
-    "Google AI Studio quick smoke test succeeded. "
-    "The API key and provider are reachable. This fast test does not validate the configured production model."
+GOOGLE_MODEL_VALIDATION_SUCCESS_MESSAGE = (
+    "Google AI Studio model validation succeeded. "
+    "The configured model returned image content using a low-cost 1K validation request. "
+    "This does not guarantee 4K production output."
 )
 
 
@@ -134,54 +135,12 @@ def test_setup_test_image_provider_supports_google_ai_studio() -> None:
                 )
 
     assert response.status_code == 200
-    assert response.json() == {"success": True, "message": GOOGLE_SMOKE_SUCCESS_MESSAGE}
+    assert response.json() == {"success": True, "message": GOOGLE_MODEL_VALIDATION_SUCCESS_MESSAGE}
     mock_post.assert_called_once()
-    assert mock_post.call_args.args[0].endswith("/models/gemini-2.5-flash-image:generateContent")
+    assert mock_post.call_args.args[0].endswith("/models/gemini-3-pro-image-preview:generateContent")
     request_json = mock_post.call_args.kwargs["json"]
-    assert request_json == setup.build_google_image_smoke_request(model=setup.GOOGLE_IMAGE_SMOKE_MODEL)
-
-
-def test_setup_test_image_provider_supports_google_ai_studio_without_model() -> None:
-    app = FastAPI()
-    app.include_router(setup.router)
-
-    class FakeResponse:
-        status_code = 200
-
-        @staticmethod
-        def json():
-            return {
-                "candidates": [
-                    {
-                        "content": {
-                            "parts": [
-                                {
-                                    "inlineData": {
-                                        "mimeType": "image/png",
-                                        "data": "ZmFrZQ==",
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-
-    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
-        with patch("app.gateway.routers.setup.requests.post", return_value=FakeResponse()) as mock_post:
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/setup/test-image-provider",
-                    json={
-                        "provider": "google-ai-studio",
-                        "model": "",
-                        "api_key": "google-key",
-                    },
-                )
-
-    assert response.status_code == 200
-    assert response.json() == {"success": True, "message": GOOGLE_SMOKE_SUCCESS_MESSAGE}
-    assert mock_post.call_args.args[0].endswith("/models/gemini-2.5-flash-image:generateContent")
+    assert request_json["generationConfig"]["imageConfig"]["aspectRatio"] == "1:1"
+    assert request_json["generationConfig"]["imageConfig"]["imageSize"] == "1K"
 
 
 def test_setup_test_image_provider_surfaces_google_response_summary_when_no_image_is_returned() -> None:
@@ -222,7 +181,7 @@ def test_setup_test_image_provider_surfaces_google_response_summary_when_no_imag
 
     assert response.status_code == 200
     assert response.json()["success"] is False
-    assert "quick smoke test reached the provider" in response.json()["message"]
+    assert "model validation reached the provider" in response.json()["message"]
     assert "finish_reason=STOP" in response.json()["message"]
     assert "returned text instead of an image" in response.json()["message"]
 
@@ -253,7 +212,7 @@ def test_setup_test_image_provider_surfaces_google_503_as_upstream_availability_
 
     assert response.status_code == 200
     assert response.json()["success"] is False
-    assert "quick smoke test failed" in response.json()["message"]
+    assert "model validation failed" in response.json()["message"]
     assert "status 503" in response.json()["message"]
     assert "temporarily unavailable or overloaded" in response.json()["message"]
 
@@ -288,7 +247,7 @@ def test_setup_test_image_provider_surfaces_google_invalid_argument_details() ->
 
     assert response.status_code == 200
     assert response.json()["success"] is False
-    assert "quick smoke test failed" in response.json()["message"]
+    assert "model validation failed" in response.json()["message"]
     assert "status 400" in response.json()["message"]
     assert "Unknown name 'responseFormat'" in response.json()["message"]
     assert mock_post.call_count == 1
@@ -351,7 +310,7 @@ def test_setup_test_image_provider_retries_google_503_then_succeeds() -> None:
                     )
 
     assert response.status_code == 200
-    assert response.json() == {"success": True, "message": GOOGLE_SMOKE_SUCCESS_MESSAGE}
+    assert response.json() == {"success": True, "message": GOOGLE_MODEL_VALIDATION_SUCCESS_MESSAGE}
     assert mock_post.call_count == 2
 
 
@@ -400,7 +359,7 @@ def test_setup_test_image_provider_retries_google_timeout_then_succeeds() -> Non
                     )
 
     assert response.status_code == 200
-    assert response.json() == {"success": True, "message": GOOGLE_SMOKE_SUCCESS_MESSAGE}
+    assert response.json() == {"success": True, "message": GOOGLE_MODEL_VALIDATION_SUCCESS_MESSAGE}
     assert mock_post.call_count == 2
 
 
@@ -438,10 +397,32 @@ def test_setup_test_image_provider_retries_google_503_then_fails() -> None:
 
     assert response.status_code == 200
     assert response.json()["success"] is False
-    assert "quick smoke test failed" in response.json()["message"]
+    assert "model validation failed" in response.json()["message"]
     assert "status 503" in response.json()["message"]
     assert "temporarily unavailable or overloaded" in response.json()["message"]
     assert mock_post.call_count == 2
+
+
+def test_setup_test_image_provider_requires_model_for_google() -> None:
+    app = FastAPI()
+    app.include_router(setup.router)
+
+    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/setup/test-image-provider",
+                json={
+                    "provider": "google-ai-studio",
+                    "model": "",
+                    "api_key": "google-key",
+                },
+            )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": False,
+        "message": "Image provider test requires a model.",
+    }
 
 
 def test_setup_test_image_provider_requires_model_for_openai_compatible() -> None:

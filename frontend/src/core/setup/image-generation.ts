@@ -34,7 +34,7 @@ export function getActiveImageProviderMissingFields(
 
 export function canTestImageProvider(config: ImageProviderConfig): boolean {
   if (config.provider === "google-ai-studio") {
-    return Boolean(config.api_key?.trim());
+    return Boolean(config.api_key?.trim() && config.model?.trim());
   }
   return Boolean(
     config.api_key?.trim()
