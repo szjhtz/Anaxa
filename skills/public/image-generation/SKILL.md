@@ -9,6 +9,8 @@ description: Use this skill when the user requests to generate, create, imagine,
 
 This skill generates high-quality images using structured prompts and a Python script. The workflow includes creating JSON-formatted prompts and executing image generation with optional reference images.
 
+For **scientific illustrations** such as graphical abstracts, mechanism illustrations, concept explainers, or paper cover art, read `/mnt/skills/public/scientific-image-prompting/SKILL.md` first. That skill decides whether the request is allowed to use AIGC at all and defines the paper-ready prompt contract.
+
 ## Core Capabilities
 
 - Create structured JSON prompts for AIGC image generation
@@ -28,6 +30,20 @@ When a user requests image generation, identify:
 - Reference images: Any images to guide generation
 - You don't need to check the folder under `/mnt/user-data`
 
+### Step 1.5: Reject Wrong Scientific Route
+
+If the request is actually a real data figure, do **not** use this skill as the primary renderer.
+
+Examples that must stay out of AIGC image generation:
+- ROC / PR curves
+- heatmaps
+- volcano plots
+- PCA / UMAP / t-SNE
+- confusion matrices
+- bar charts / line charts / histograms driven by real values
+
+Route those requests to validated plotting workflows instead.
+
 ### Step 2: Create Structured Prompt
 
 Generate a structured JSON file in `/mnt/user-data/workspace/` with naming pattern: `{descriptive-name}.json`
@@ -39,7 +55,7 @@ Call the Python script:
 python /mnt/skills/public/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/prompt-file.json \
   --reference-images /path/to/ref1.jpg /path/to/ref2.png \
-  --output-file /mnt/user-data/outputs/generated-image.jpg
+  --output-file /mnt/user-data/outputs/generated-image.jpg \
   --aspect-ratio 16:9
 ```
 
@@ -49,9 +65,38 @@ Parameters:
 - `--reference-images`: Absolute paths to reference images (optional, space-separated)
 - `--output-file`: Absolute path to output image file (required)
 - `--aspect-ratio`: Aspect ratio of the generated image (optional, default: 16:9)
+- `--model`: Optional Google AI Studio image model
+- `--image-size`: Optional `1K`, `2K`, or `4K`
+- `--output-mime-type`: Optional `image/png` or `image/jpeg`
+- `--scientific-mode`: Enables scientific illustration guardrails and 4K/PNG defaults
+- `--manifest-file`: Optional manifest output path for generation audit
+- `--draft-mode`: Lower-cost mode when no explicit model is provided
 
 [!NOTE]
 Do NOT read the python file, just call it with the parameters.
+
+## Scientific Illustration Mode
+
+When the request is a scientific illustration that passed the route check:
+
+1. Read `/mnt/skills/public/scientific-image-prompting/SKILL.md`
+2. Produce `prompt.json` using that contract
+3. Generate the image in scientific mode
+4. Keep the final output conceptual, not quantitative
+
+Recommended command:
+
+```bash
+python /mnt/skills/public/image-generation/scripts/generate.py \
+  --prompt-file /mnt/user-data/outputs/prompt.json \
+  --output-file /mnt/user-data/outputs/scientific-illustration-4k.png \
+  --manifest-file /mnt/user-data/outputs/generation_manifest.json \
+  --aspect-ratio 16:9 \
+  --scientific-mode \
+  --model gemini-3-pro-image-preview \
+  --image-size 4K \
+  --output-mime-type image/png
+```
 
 ## Character Generation Example
 
@@ -154,6 +199,7 @@ Read the following template file only when matching the user request.
 After generation:
 
 - Images are typically saved in `/mnt/user-data/outputs/`
+- In scientific mode, also preserve `generation_manifest.json`
 - Share generated images with user using present_files tool
 - Provide brief description of the generation result
 - Offer to iterate if adjustments needed

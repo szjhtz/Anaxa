@@ -482,17 +482,24 @@ function ToolKeyCard({
       ? { label: "Tavily", placeholder: "Enter Tavily API key" }
       : item.service === "jina"
         ? { label: "Jina", placeholder: "Enter Jina API key" }
+        : item.service === "google-ai-studio"
+          ? {
+              label: "Google AI Studio",
+              placeholder: "Enter Google AI Studio API key",
+              envLabel: "GEMINI_API_KEY / GOOGLE_API_KEY",
+            }
         : item.service === "openalex"
           ? { label: "OpenAlex", placeholder: "Enter OpenAlex API key" }
           : { label: "Semantic Scholar", placeholder: "Enter Semantic Scholar API key" };
   const label = serviceMeta.label;
+  const envLabel = "envLabel" in serviceMeta ? serviceMeta.envLabel : item.env_var;
 
   return (
     <div className="bg-muted/40 space-y-3 rounded-lg border p-4">
       <div className="flex items-end gap-3">
         <div className="flex-1">
           <label className="text-xs font-medium">
-            {label} API Key ({item.env_var})
+            {label} API Key ({envLabel})
           </label>
           <div className="flex items-center gap-1.5">
             <Input

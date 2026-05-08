@@ -408,9 +408,9 @@ export const zhCN: Translations = {
     modelsTitle: "模型配置",
     modelsDescription:
       "添加和管理 LLM 模型提供商。每个模型需要提供商类型、模型名称和 API 密钥。",
-    toolKeysTitle: "工具 / 学术 API 密钥",
+    toolKeysTitle: "工具 / 文生图 / 学术 API 密钥",
     toolKeysDescription:
-      "配置网络搜索（Tavily）、网页抓取（Jina）以及学术检索增强（OpenAlex、Semantic Scholar）的 API 密钥。",
+      "配置网络搜索（Tavily）、网页抓取（Jina）、Google AI Studio 文生图以及学术检索增强（OpenAlex、Semantic Scholar）的 API 密钥。",
     addModel: "添加模型",
     model: "模型",
     provider: "提供商",

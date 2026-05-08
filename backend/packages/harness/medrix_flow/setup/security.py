@@ -9,6 +9,8 @@ from medrix_flow.config import get_app_config
 
 _ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _ALLOWED_TOOL_KEY_ENV_VARS = {
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
     "INFOQUEST_API_KEY",
     "JINA_API_KEY",
     "OPENALEX_API_KEY",

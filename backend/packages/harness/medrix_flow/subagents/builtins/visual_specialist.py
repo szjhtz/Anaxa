@@ -54,6 +54,18 @@ For every visual task, follow this strict workflow:
 8. **Deliver**: Move final output to `/mnt/user-data/outputs/` and call `present_files`.
 </workflow>
 
+<scientific_visual_routing>
+When the task is academic or scientific, classify it before generating anything:
+- `data_figure`: real measured or statistical figure -> route to validated plotting workflows such as experiment-lab or nature-figure, never AIGC image generation
+- `deterministic_diagram`: workflow, architecture, process, or study design -> prefer fireworks-tech-graph or another deterministic diagram workflow
+- `ai_scientific_illustration`: graphical abstract, mechanism illustration, cover art, concept explainer -> use `/mnt/skills/public/scientific-image-prompting/SKILL.md` first, then `/mnt/skills/public/image-generation/SKILL.md`
+
+Scientific image generation rules:
+- Never fabricate ROC curves, heatmaps, volcano plots, UMAPs, microscopy results, or other data-like panels
+- Default output target is 4K PNG using `gemini-3-pro-image-preview`
+- Always produce `prompt.json`, `prompt_audit.md`, `generation_manifest.json`, `caption.md`, and `ai_disclosure.md` alongside the image
+</scientific_visual_routing>
+
 <quality_standards>
 MANDATORY before delivery:
 - Charts: data integrity, chart type fit, plotted fields match the request, labels complete, color accessible, no chartjunk

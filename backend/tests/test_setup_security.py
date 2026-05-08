@@ -27,3 +27,8 @@ def test_validate_env_var_name_rejects_invalid_characters() -> None:
 def test_validate_env_var_name_rejects_unapproved_tool_key_variable() -> None:
     with pytest.raises(ValueError, match="Unsupported tool API key env var"):
         validate_env_var_name("OPENAI_API_KEY", allow_tool_key=True)
+
+
+def test_validate_env_var_name_allows_google_ai_studio_tool_key_variables() -> None:
+    validate_env_var_name("GEMINI_API_KEY", allow_tool_key=True)
+    validate_env_var_name("GOOGLE_API_KEY", allow_tool_key=True)

@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import base64
+import importlib.util
+import json
+from io import BytesIO
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+
+def _load_image_generation_module():
+    repo_root = Path(__file__).resolve().parents[2]
+    script_path = repo_root / "skills" / "public" / "image-generation" / "scripts" / "generate.py"
+    spec = importlib.util.spec_from_file_location("image_generation_script", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _png_bytes(color: str = "blue", size: tuple[int, int] = (8, 8)) -> bytes:
+    image = Image.new("RGB", size, color=color)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict, status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def test_generate_image_uses_google_ai_studio_alias_and_writes_manifest(tmp_path, monkeypatch):
+    module = _load_image_generation_module()
+
+    prompt_file = tmp_path / "prompt.json"
+    prompt_file.write_text(
+        json.dumps(
+            {
+                "figure_type": "graphical_abstract",
+                "prompt": "A clean scientific graphical abstract about multimodal agents.",
+                "negative_prompt": "charts, axes, p-values",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    output_file = tmp_path / "scientific-illustration-4k.png"
+    manifest_file = tmp_path / "generation_manifest.json"
+
+    captured: dict = {}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return _FakeResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "inlineData": {
+                                        "mimeType": "image/png",
+                                        "data": base64.b64encode(_png_bytes(size=(32, 24))).decode("utf-8"),
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "google-studio-key")
+    monkeypatch.setattr(module.requests, "post", fake_post)
+
+    message = module.generate_image(
+        str(prompt_file),
+        [],
+        str(output_file),
+        scientific_mode=True,
+        manifest_file=str(manifest_file),
+    )
+
+    assert "Successfully generated image" in message
+    assert captured["url"].endswith("/models/gemini-3-pro-image-preview:generateContent")
+    assert captured["headers"]["x-goog-api-key"] == "google-studio-key"
+    assert captured["json"]["generationConfig"]["responseFormat"]["image"]["imageSize"] == "4K"
+    assert captured["json"]["generationConfig"]["responseFormat"]["image"]["mimeType"] == "image/png"
+    assert output_file.exists()
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert manifest["scientific_mode"] is True
+    assert manifest["image_size"] == "4K"
+    assert manifest["output_mime_type"] == "image/png"
+    assert manifest["figure_type"] == "graphical_abstract"
+    assert manifest["negative_prompt"] == "charts, axes, p-values"
+    assert manifest["actual_output"]["width"] == 32
+    assert manifest["actual_output"]["height"] == 24
+
+
+def test_generate_image_raises_when_no_api_key(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("simple prompt", encoding="utf-8")
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="Google AI Studio API key is not set"):
+        module.generate_image(str(prompt_file), [], str(tmp_path / "out.png"))
+
+
+def test_generate_image_raises_when_no_image_data_returned(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("simple prompt", encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: _FakeResponse({"candidates": [{"content": {"parts": [{"text": "no image"}]}}]}),
+    )
+
+    with pytest.raises(RuntimeError, match="no image data"):
+        module.generate_image(str(prompt_file), [], str(tmp_path / "out.png"))
+
+
+def test_generate_image_manifest_prompt_falls_back_to_rendered_prompt(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+
+    prompt_file = tmp_path / "prompt.json"
+    prompt_file.write_text(
+        json.dumps(
+            {
+                "figure_type": "concept_explainer",
+                "composition": "clean three-part composition",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    output_file = tmp_path / "scientific-illustration-4k.png"
+    manifest_file = tmp_path / "generation_manifest.json"
+
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: _FakeResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "inlineData": {
+                                        "mimeType": "image/png",
+                                        "data": base64.b64encode(_png_bytes()).decode("utf-8"),
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+    )
+
+    module.generate_image(
+        str(prompt_file),
+        [],
+        str(output_file),
+        scientific_mode=True,
+        manifest_file=str(manifest_file),
+    )
+
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert manifest["prompt"] == manifest["rendered_prompt"]

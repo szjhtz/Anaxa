@@ -32,7 +32,7 @@ class TestModelRequest(BaseModel):
 
 
 class TestToolKeyRequest(BaseModel):
-    service: str = Field(..., description="tavily, jina, openalex, or semantic-scholar")
+    service: str = Field(..., description="tavily, jina, openalex, semantic-scholar, or google-ai-studio")
     api_key: str = Field(..., description="API key to test")
 
 
@@ -163,6 +163,46 @@ async def test_tool_key(req: TestToolKeyRequest) -> TestResult:
             if resp.status_code == 200:
                 return TestResult(success=True, message="Semantic Scholar API key is valid.")
             return TestResult(success=False, message=f"Semantic Scholar returned status {resp.status_code}.")
+
+        elif service == "google-ai-studio":
+            import requests as http_requests
+
+            resp = http_requests.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                headers={
+                    "x-goog-api-key": api_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "contents": [{"parts": [{"text": "Generate a simple blue scientific icon on a white background."}]}],
+                    "generationConfig": {
+                        "responseModalities": ["TEXT", "IMAGE"],
+                        "responseFormat": {
+                            "image": {
+                                "mimeType": "image/png",
+                                "aspectRatio": "1:1",
+                                "imageSize": "1K",
+                            }
+                        },
+                    },
+                },
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                return TestResult(success=False, message=f"Google AI Studio returned status {resp.status_code}.")
+            payload = resp.json()
+            candidates = payload.get("candidates") or []
+            parts = ((candidates[0] or {}).get("content") or {}).get("parts") if candidates else []
+            has_image = any(
+                isinstance(part, dict) and (
+                    ("inlineData" in part and isinstance(part["inlineData"], dict) and part["inlineData"].get("data"))
+                    or ("inline_data" in part and isinstance(part["inline_data"], dict) and part["inline_data"].get("data"))
+                )
+                for part in (parts or [])
+            )
+            if has_image:
+                return TestResult(success=True, message="Google AI Studio API key is valid for image generation.")
+            return TestResult(success=False, message="Google AI Studio key was accepted, but no image content was returned.")
 
         else:
             return TestResult(success=False, message=f"Unknown service: {service}")

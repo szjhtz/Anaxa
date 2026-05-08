@@ -39,3 +39,44 @@ def test_setup_test_tool_key_supports_semantic_scholar() -> None:
     assert response.status_code == 200
     assert response.json() == {"success": True, "message": "Semantic Scholar API key is valid."}
     mock_get.assert_called_once()
+
+
+def test_setup_test_tool_key_supports_google_ai_studio() -> None:
+    app = FastAPI()
+    app.include_router(setup.router)
+
+    fake_payload = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "image/png",
+                                "data": "ZmFrZQ==",
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return fake_payload
+
+    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
+        with patch("requests.post", return_value=FakeResponse()) as mock_post:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/setup/test-tool-key",
+                    json={"service": "google-ai-studio", "api_key": "google-key"},
+                )
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "message": "Google AI Studio API key is valid for image generation."}
+    mock_post.assert_called_once()

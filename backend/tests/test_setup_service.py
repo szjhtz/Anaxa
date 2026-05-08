@@ -96,6 +96,7 @@ def test_get_setup_config_data_includes_academic_tool_keys(monkeypatch):
     monkeypatch.setattr(
         "medrix_flow.setup.service.get_env_value",
         lambda name: {
+            "GEMINI_API_KEY": "gemini-key",
             "OPENALEX_API_KEY": "oa-key",
             "SEMANTIC_SCHOLAR_API_KEY": "s2-key",
         }.get(name),
@@ -104,5 +105,34 @@ def test_get_setup_config_data_includes_academic_tool_keys(monkeypatch):
     result = get_setup_config_data()
 
     services = {item.service: item.api_key for item in result.tool_keys}
+    assert services["google-ai-studio"] == "gemini-key"
     assert services["openalex"] == "oa-key"
     assert services["semantic-scholar"] == "s2-key"
+
+
+def test_save_setup_config_data_syncs_google_ai_studio_alias_env_vars(monkeypatch):
+    written_env: dict[str, str] = {}
+
+    monkeypatch.setattr("medrix_flow.setup.service.read_raw_config", lambda: {"models": []})
+    monkeypatch.setattr("medrix_flow.setup.service.write_raw_config", lambda data: None)
+    monkeypatch.setattr("medrix_flow.setup.service.reload_app_config", lambda: None)
+    monkeypatch.setattr("medrix_flow.setup.service.validate_setup_model_provider", lambda provider: None)
+    monkeypatch.setattr("medrix_flow.setup.service.validate_optional_base_url", lambda base_url: None)
+    monkeypatch.setattr("medrix_flow.setup.service.validate_env_var_name", lambda env_var, allow_tool_key=False: None)
+    monkeypatch.setattr("medrix_flow.setup.service.set_env_value", lambda key, value: written_env.__setitem__(key, value))
+
+    payload = SaveModelsRequest(
+        models=[],
+        tool_keys=[
+            {
+                "service": "google-ai-studio",
+                "api_key": "google-studio-key",
+                "env_var": "GEMINI_API_KEY",
+            }
+        ],
+    )
+
+    save_setup_config_data(payload)
+
+    assert written_env["GEMINI_API_KEY"] == "google-studio-key"
+    assert written_env["GOOGLE_API_KEY"] == "google-studio-key"

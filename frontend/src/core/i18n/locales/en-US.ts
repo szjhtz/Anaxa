@@ -423,9 +423,9 @@ export const enUS: Translations = {
     modelsTitle: "Model Configuration",
     modelsDescription:
       "Add and manage your LLM model providers. Each model needs a provider, model name, and API key.",
-    toolKeysTitle: "Tool / Academic API Keys",
+    toolKeysTitle: "Tool / Image / Academic API Keys",
     toolKeysDescription:
-      "Configure API keys for web search (Tavily), web fetch (Jina), and academic retrieval enhancement (OpenAlex, Semantic Scholar).",
+      "Configure API keys for web search (Tavily), web fetch (Jina), Google AI Studio image generation, and academic retrieval enhancement (OpenAlex, Semantic Scholar).",
     addModel: "Add Model",
     model: "Model",
     provider: "Provider",

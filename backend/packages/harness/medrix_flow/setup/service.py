@@ -35,7 +35,7 @@ class ModelSetupItem(BaseModel):
 
 
 class ToolKeyItem(BaseModel):
-    service: str = Field(..., description="Service name: tavily, jina, openalex, or semantic-scholar")
+    service: str = Field(..., description="Service name: tavily, jina, openalex, semantic-scholar, or google-ai-studio")
     api_key: str | None = Field(None, description="API key (plain on write, masked on read)")
     env_var: str = Field(..., description="Environment variable name")
 
@@ -86,6 +86,10 @@ def set_env_value(var_name: str, value: str) -> None:
     os.environ[var_name] = value
 
 
+def get_google_ai_studio_key() -> str:
+    return get_env_value("GEMINI_API_KEY") or get_env_value("GOOGLE_API_KEY") or ""
+
+
 def get_setup_config_data() -> SetupConfigResponse:
     refresh_env()
     raw = read_raw_config()
@@ -122,6 +126,11 @@ def get_setup_config_data() -> SetupConfigResponse:
     tool_keys = [
         ToolKeyItem(service="tavily", api_key=get_env_value("TAVILY_API_KEY") or "", env_var="TAVILY_API_KEY"),
         ToolKeyItem(service="jina", api_key=get_env_value("JINA_API_KEY") or "", env_var="JINA_API_KEY"),
+        ToolKeyItem(
+            service="google-ai-studio",
+            api_key=get_google_ai_studio_key(),
+            env_var="GEMINI_API_KEY",
+        ),
         ToolKeyItem(service="openalex", api_key=get_env_value("OPENALEX_API_KEY") or "", env_var="OPENALEX_API_KEY"),
         ToolKeyItem(
             service="semantic-scholar",
@@ -170,7 +179,12 @@ def save_setup_config_data(payload: SaveModelsRequest) -> None:
         for tool_key in payload.tool_keys:
             validate_env_var_name(tool_key.env_var, allow_tool_key=True)
             if tool_key.api_key and tool_key.api_key.strip():
-                set_env_value(tool_key.env_var, tool_key.api_key.strip())
+                value = tool_key.api_key.strip()
+                if tool_key.service == "google-ai-studio":
+                    set_env_value("GEMINI_API_KEY", value)
+                    set_env_value("GOOGLE_API_KEY", value)
+                else:
+                    set_env_value(tool_key.env_var, value)
 
     write_raw_config(raw)
     reload_app_config()
