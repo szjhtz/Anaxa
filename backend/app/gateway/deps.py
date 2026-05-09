@@ -9,8 +9,8 @@ from typing import TypeVar, cast
 from fastapi import FastAPI, HTTPException, Request
 from langgraph.types import Checkpointer
 
-from medrix_flow.agents.checkpointer.async_provider import make_checkpointer
 from medrix_flow.academic import AcademicRepository, AcademicResearchService
+from medrix_flow.agents.checkpointer.async_provider import make_checkpointer
 from medrix_flow.config.paths import get_paths
 from medrix_flow.experiments import ExperimentRepository, ExperimentService
 from medrix_flow.runtime import MemoryStreamBridge, SQLiteFeedbackRepo, SQLiteRunEventStore, SQLiteRunStore

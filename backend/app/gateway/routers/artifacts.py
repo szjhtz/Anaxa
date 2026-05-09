@@ -1,7 +1,7 @@
 import logging
 import mimetypes
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -65,7 +65,7 @@ async def list_thread_artifacts(thread_id: str) -> ArtifactListResponse:
                 filepath=f"{VIRTUAL_PATH_PREFIX}/outputs/{relative.as_posix()}",
                 filename=path.name,
                 size=stat.st_size,
-                modified_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                modified_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
             )
         )
 
