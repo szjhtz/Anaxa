@@ -26,17 +26,17 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/core/i18n/hooks";
 import {
-  canTestImageProvider,
-  getActiveImageProviderMissingFields,
-  normalizeImageProviderBaseUrl,
-} from "@/core/setup/image-generation";
-import {
   useSaveSetup,
   useSetupConfig,
   useTestImageProvider,
   useTestModel,
   useTestToolKey,
 } from "@/core/setup/hooks";
+import {
+  canTestImageProvider,
+  getActiveImageProviderMissingFields,
+  normalizeImageProviderBaseUrl,
+} from "@/core/setup/image-generation";
 import type {
   ImageGenerationConfig,
   ImageProviderConfig,

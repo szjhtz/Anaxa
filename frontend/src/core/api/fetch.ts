@@ -14,7 +14,7 @@ export async function fetchWithTimeout(
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       const fallbackMessage = `Request timed out after ${(timeoutMs / 1000).toFixed(0)}s — the backend service may be unavailable`;
-      throw new Error(timeoutErrorMessage || fallbackMessage);
+      throw new Error(timeoutErrorMessage ?? fallbackMessage);
     }
     throw err;
   } finally {
