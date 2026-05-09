@@ -1,12 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import requests
 
 from app.gateway.routers import setup
-
+from medrix_flow.utils.google_image import build_google_image_smoke_request
 
 GOOGLE_MODEL_VALIDATION_SUCCESS_MESSAGE = (
     "Google AI Studio model validation succeeded. "
@@ -89,7 +89,7 @@ def test_setup_test_tool_key_supports_google_ai_studio() -> None:
     assert response.json() == {"success": True, "message": "Google AI Studio API key is valid for image generation."}
     mock_post.assert_called_once()
     request_json = mock_post.call_args.kwargs["json"]
-    assert request_json == setup.build_google_image_smoke_request(model=setup.GOOGLE_IMAGE_SMOKE_MODEL)
+    assert request_json == build_google_image_smoke_request(model=setup.GOOGLE_IMAGE_SMOKE_MODEL)
     assert request_json["generationConfig"]["imageConfig"]["aspectRatio"] == "1:1"
     assert request_json["generationConfig"]["imageConfig"]["imageSize"] == "1K"
 
@@ -215,6 +215,7 @@ def test_setup_test_image_provider_surfaces_google_503_as_upstream_availability_
     assert "model validation failed" in response.json()["message"]
     assert "status 503" in response.json()["message"]
     assert "temporarily unavailable or overloaded" in response.json()["message"]
+    assert "not an API key configuration error" in response.json()["message"]
 
 
 def test_setup_test_image_provider_surfaces_google_invalid_argument_details() -> None:
@@ -400,6 +401,7 @@ def test_setup_test_image_provider_retries_google_503_then_fails() -> None:
     assert "model validation failed" in response.json()["message"]
     assert "status 503" in response.json()["message"]
     assert "temporarily unavailable or overloaded" in response.json()["message"]
+    assert "not an API key configuration error" in response.json()["message"]
     assert mock_post.call_count == 2
 
 
@@ -504,3 +506,119 @@ def test_setup_test_image_provider_supports_openai_compatible_url_result() -> No
 
     assert response.status_code == 200
     assert response.json() == {"success": True, "message": "OpenAI-compatible image provider is valid for image generation."}
+
+
+def test_setup_test_image_provider_rejects_openai_compatible_full_endpoint_base_url() -> None:
+    app = FastAPI()
+    app.include_router(setup.router)
+
+    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/setup/test-image-provider",
+                json={
+                    "provider": "openai-compatible",
+                    "model": "gpt-image-1",
+                    "api_key": "openai-key",
+                    "base_url": "https://images.example.com/v1/images/generations",
+                },
+            )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert "base URL must be the API root path" in response.json()["message"]
+    assert "/images/generations endpoint" in response.json()["message"]
+
+
+def test_setup_test_image_provider_surfaces_openai_compatible_non_json_response() -> None:
+    app = FastAPI()
+    app.include_router(setup.router)
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+        text = "<html>not json</html>"
+        content = text.encode("utf-8")
+
+        @staticmethod
+        def json():
+            raise ValueError("Expecting value")
+
+    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
+        with patch("app.gateway.routers.setup.requests.post", return_value=FakeResponse()):
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/setup/test-image-provider",
+                    json={
+                        "provider": "openai-compatible",
+                        "model": "gpt-image-1",
+                        "api_key": "openai-key",
+                        "base_url": "https://images.example.com/v1",
+                    },
+                )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert "returned a non-JSON response" in response.json()["message"]
+    assert "content_type=text/html; charset=utf-8" in response.json()["message"]
+    assert "preview=<html>not json</html>" in response.json()["message"]
+
+
+def test_setup_test_image_provider_surfaces_openai_compatible_status_with_preview() -> None:
+    app = FastAPI()
+    app.include_router(setup.router)
+
+    class FakeResponse:
+        status_code = 404
+        headers = {"Content-Type": "application/json"}
+        text = '{"error":"not found"}'
+        content = text.encode("utf-8")
+
+        @staticmethod
+        def json():
+            return {"error": "not found"}
+
+    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
+        with patch("app.gateway.routers.setup.requests.post", return_value=FakeResponse()):
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/setup/test-image-provider",
+                    json={
+                        "provider": "openai-compatible",
+                        "model": "gpt-image-1",
+                        "api_key": "openai-key",
+                        "base_url": "https://images.example.com/v1",
+                    },
+                )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert "returned status 404" in response.json()["message"]
+    assert "content_type=application/json" in response.json()["message"]
+    assert 'preview={"error":"not found"}' in response.json()["message"]
+
+
+def test_setup_test_image_provider_surfaces_openai_compatible_timeout() -> None:
+    app = FastAPI()
+    app.include_router(setup.router)
+
+    with patch("app.gateway.routers.setup.refresh_env", lambda: None):
+        with patch(
+            "app.gateway.routers.setup.requests.post",
+            side_effect=requests.exceptions.Timeout("timed out"),
+        ):
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/setup/test-image-provider",
+                    json={
+                        "provider": "openai-compatible",
+                        "model": "gpt-image-1",
+                        "api_key": "openai-key",
+                        "base_url": "https://images.example.com/v1",
+                    },
+                )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert "timed out after 30 seconds" in response.json()["message"]
+    assert "https://images.example.com/v1/images/generations" in response.json()["message"]

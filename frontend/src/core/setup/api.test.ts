@@ -63,9 +63,45 @@ describe("setup api", () => {
           api_key: "sk-test",
           base_url: "https://images.example.com/v1",
         }),
-        timeoutMs: 125_000,
-        timeoutErrorMessage: "Current model validation timed out. Please retry later.",
+        timeoutMs: 190_000,
+        timeoutErrorMessage: "Current image model validation timed out after about 3 minutes. Please retry later.",
       }),
     );
+  });
+
+  it("surfaces backend detail when image provider test fails", async () => {
+    fetchWithTimeoutMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "OpenAI-compatible image provider returned a non-JSON response." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      testImageProvider({
+        provider: "openai-compatible",
+        model: "gpt-image-1",
+        api_key: "sk-test",
+        base_url: "https://images.example.com/v1",
+      }),
+    ).rejects.toThrow("OpenAI-compatible image provider returned a non-JSON response.");
+  });
+
+  it("shows a specific fallback when the reverse proxy returns 504", async () => {
+    fetchWithTimeoutMock.mockResolvedValue(
+      new Response("<html>gateway timeout</html>", {
+        status: 504,
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await expect(
+      testImageProvider({
+        provider: "google-ai-studio",
+        model: "gemini-3-pro-image-preview",
+        api_key: "google-key",
+        base_url: null,
+      }),
+    ).rejects.toThrow("Image model validation timed out in the gateway before the backend replied.");
   });
 });

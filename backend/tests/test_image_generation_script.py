@@ -30,15 +30,29 @@ def _png_bytes(color: str = "blue", size: tuple[int, int] = (8, 8)) -> bytes:
 
 
 class _FakeResponse:
-    def __init__(self, payload: dict, status_code: int = 200) -> None:
+    def __init__(
+        self,
+        payload: object,
+        status_code: int = 200,
+        *,
+        headers: dict[str, str] | None = None,
+        text: str | None = None,
+        json_exc: Exception | None = None,
+    ) -> None:
         self._payload = payload
         self.status_code = status_code
+        self.headers = headers or {"Content-Type": "application/json"}
+        self.text = text if text is not None else (json.dumps(payload) if isinstance(payload, (dict, list)) else str(payload))
+        self.content = self.text.encode("utf-8")
+        self._json_exc = json_exc
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
-    def json(self) -> dict:
+    def json(self) -> object:
+        if self._json_exc is not None:
+            raise self._json_exc
         return self._payload
 
 
@@ -442,3 +456,87 @@ def test_generate_image_rejects_reference_images_for_openai_compatible_provider(
             [str(reference_image)],
             str(tmp_path / "out.png"),
         )
+
+
+def test_generate_image_rejects_openai_compatible_full_endpoint_base_url(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("Draw a clean scientific concept figure.", encoding="utf-8")
+
+    monkeypatch.setenv("IMAGE_GEN_ACTIVE_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_MODEL", "gpt-image-1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_BASE_URL", "https://images.example.com/v1/images/generations")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_API_KEY", "openai-image-key")
+
+    with pytest.raises(RuntimeError, match="base URL must be the API root path"):
+        module.generate_image(str(prompt_file), [], str(tmp_path / "out.png"))
+
+
+def test_generate_image_surfaces_openai_compatible_non_json_response(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("Draw a clean scientific concept figure.", encoding="utf-8")
+
+    monkeypatch.setenv("IMAGE_GEN_ACTIVE_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_MODEL", "gpt-image-1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_BASE_URL", "https://images.example.com/v1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_API_KEY", "openai-image-key")
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: _FakeResponse(
+            "<html>not json</html>",
+            headers={"Content-Type": "text/html; charset=utf-8"},
+            text="<html>not json</html>",
+            json_exc=ValueError("Expecting value"),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="returned a non-JSON response"):
+        module.generate_image(str(prompt_file), [], str(tmp_path / "out.png"))
+
+
+def test_generate_image_surfaces_openai_compatible_status_with_preview(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("Draw a clean scientific concept figure.", encoding="utf-8")
+
+    monkeypatch.setenv("IMAGE_GEN_ACTIVE_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_MODEL", "gpt-image-1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_BASE_URL", "https://images.example.com/v1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_API_KEY", "openai-image-key")
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: _FakeResponse(
+            {"error": "not found"},
+            status_code=404,
+            text='{"error":"not found"}',
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="returned status 404"):
+        module.generate_image(str(prompt_file), [], str(tmp_path / "out.png"))
+
+
+def test_generate_image_surfaces_openai_compatible_timeout(monkeypatch, tmp_path):
+    module = _load_image_generation_module()
+
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("Draw a clean scientific concept figure.", encoding="utf-8")
+
+    monkeypatch.setenv("IMAGE_GEN_ACTIVE_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_MODEL", "gpt-image-1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_BASE_URL", "https://images.example.com/v1")
+    monkeypatch.setenv("IMAGE_GEN_OPENAI_API_KEY", "openai-image-key")
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.exceptions.Timeout("timed out")),
+    )
+
+    with pytest.raises(RuntimeError, match="timed out after 120 seconds"):
+        module.generate_image(str(prompt_file), [], str(tmp_path / "out.png"))

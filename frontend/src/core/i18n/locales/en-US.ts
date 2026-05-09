@@ -438,6 +438,8 @@ export const enUS: Translations = {
     apiKey: "API Key",
     baseUrl: "Base URL",
     testConnection: "Test",
+    testToolKey: "Test key",
+    testImageProvider: "Test image model",
     activeProviderBadge: "Active",
     imageGenerationMissingFields: "Missing required fields for the active image provider:",
     saveAll: "Save Configuration",

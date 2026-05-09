@@ -672,7 +672,7 @@ function ToolKeyCard({
           ) : (
             <ZapIcon className="size-3.5" />
           )}
-          {t.setup.testConnection}
+          {t.setup.testToolKey}
         </Button>
       </div>
       {testStatus === "success" && (
@@ -798,7 +798,7 @@ function ImageProviderCard({
               ) : (
                 <ZapIcon className="size-3.5" />
               )}
-              {t.setup.testConnection}
+              {t.setup.testImageProvider}
             </Button>
           </div>
         </div>

@@ -39,6 +39,11 @@ IMAGE_GEN_GOOGLE_MODEL_ENV = "IMAGE_GEN_GOOGLE_MODEL"
 IMAGE_GEN_OPENAI_MODEL_ENV = "IMAGE_GEN_OPENAI_MODEL"
 IMAGE_GEN_OPENAI_BASE_URL_ENV = "IMAGE_GEN_OPENAI_BASE_URL"
 IMAGE_GEN_OPENAI_API_KEY_ENV = "IMAGE_GEN_OPENAI_API_KEY"
+OPENAI_COMPATIBLE_IMAGE_GENERATIONS_PATH = "/images/generations"
+OPENAI_COMPATIBLE_BASE_URL_HINT = (
+    "Use the API root path such as https://provider.example.com/v1; "
+    "MedrixFlow appends /images/generations."
+)
 SCIENTIFIC_GUARDRAIL = (
     "This is a scientific illustration request, not a quantitative data figure. "
     "Do not fabricate plots, axes, p-values, ROC curves, heatmaps, volcano plots, or other measured results. "
@@ -80,6 +85,54 @@ def normalize_base_url(base_url: str | None) -> str | None:
     if not base_url:
         return None
     return base_url.strip().rstrip("/") or None
+
+
+def validate_openai_compatible_base_url(base_url: str) -> None:
+    if base_url.rstrip("/").endswith(OPENAI_COMPATIBLE_IMAGE_GENERATIONS_PATH):
+        raise RuntimeError(
+            "OpenAI-compatible image provider base URL must be the API root path, not the full "
+            f"{OPENAI_COMPATIBLE_IMAGE_GENERATIONS_PATH} endpoint. {OPENAI_COMPATIBLE_BASE_URL_HINT}"
+        )
+
+
+def openai_compatible_generations_url(base_url: str) -> str:
+    return f"{base_url}{OPENAI_COMPATIBLE_IMAGE_GENERATIONS_PATH}"
+
+
+def trim_for_message(value: str, limit: int = 500) -> str:
+    normalized = " ".join(value.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
+
+
+def response_content_type(response: requests.Response) -> str:
+    headers = getattr(response, "headers", {}) or {}
+    if hasattr(headers, "get"):
+        content_type = headers.get("Content-Type") or headers.get("content-type")
+        if content_type:
+            return str(content_type)
+    return "unknown"
+
+
+def response_preview(response: requests.Response) -> str:
+    text = getattr(response, "text", None)
+    if text is None:
+        content = getattr(response, "content", b"")
+        if isinstance(content, bytes):
+            text = content.decode("utf-8", errors="replace")
+        elif content:
+            text = str(content)
+    if not text:
+        return "<empty>"
+    return trim_for_message(text)
+
+
+def json_preview(payload: object) -> str:
+    try:
+        return trim_for_message(json.dumps(payload, ensure_ascii=False))
+    except TypeError:
+        return trim_for_message(str(payload))
 
 
 def resolve_google_ai_studio_api_key() -> str | None:
@@ -139,6 +192,7 @@ def resolve_provider_base_url(provider: str, base_url: str | None) -> str | None
             "OpenAI-compatible image provider base URL is not configured. "
             "Set IMAGE_GEN_OPENAI_BASE_URL or pass --base-url."
         )
+    validate_openai_compatible_base_url(resolved)
     return resolved
 
 
@@ -210,6 +264,31 @@ def extract_openai_compatible_image(payload: dict, timeout_seconds: int) -> tupl
             response.raise_for_status()
             return response.content, response.headers.get("Content-Type")
     raise RuntimeError("OpenAI-compatible image provider returned no image content")
+
+
+def parse_openai_compatible_response_json(response: requests.Response, endpoint: str) -> dict:
+    try:
+        payload = response.json()
+    except Exception as exc:
+        raise RuntimeError(
+            f"OpenAI-compatible image provider at {endpoint} returned a non-JSON response. "
+            f"status={response.status_code}; content_type={response_content_type(response)}; "
+            f"preview={response_preview(response)}. {OPENAI_COMPATIBLE_BASE_URL_HINT}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            f"OpenAI-compatible image provider at {endpoint} returned JSON that is not an object. "
+            f"preview={json_preview(payload)}. {OPENAI_COMPATIBLE_BASE_URL_HINT}"
+        )
+    return payload
+
+
+def format_openai_compatible_status_error(response: requests.Response, endpoint: str, model: str, size: str) -> str:
+    return (
+        f"OpenAI-compatible image provider at {endpoint} returned status {response.status_code} "
+        f"for model '{model}' and size {size}. content_type={response_content_type(response)}; "
+        f"preview={response_preview(response)}. {OPENAI_COMPATIBLE_BASE_URL_HINT}"
+    )
 
 
 def save_generated_image_bytes(image_bytes: bytes, output_file: str) -> dict[str, int | None]:
@@ -313,27 +392,39 @@ def generate_image(
         actual_mime_type = image_part.get("mimeType") or image_part.get("mime_type") or resolved_output_mime_type
         image_bytes = base64.b64decode(image_part["data"])
     else:
-        response = requests.post(
-            f"{resolved_base_url}/images/generations",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=build_openai_compatible_generation_request(
-                prompt_text=prompt_text,
-                model=resolved_model,
-                image_size=resolved_image_size,
-                aspect_ratio=aspect_ratio,
-            ),
-            timeout=timeout_seconds,
-        )
+        assert resolved_base_url is not None
+        endpoint = openai_compatible_generations_url(resolved_base_url)
+        request_size = map_openai_compatible_size(aspect_ratio, resolved_image_size)
         try:
-            response.raise_for_status()
-        except Exception as exc:
+            response = requests.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=build_openai_compatible_generation_request(
+                    prompt_text=prompt_text,
+                    model=resolved_model,
+                    image_size=resolved_image_size,
+                    aspect_ratio=aspect_ratio,
+                ),
+                timeout=timeout_seconds,
+            )
+        except requests.exceptions.Timeout as exc:
             raise RuntimeError(
-                f"OpenAI-compatible image provider rejected {map_openai_compatible_size(aspect_ratio, resolved_image_size)} output for model '{resolved_model}'."
+                f"OpenAI-compatible image provider request to {endpoint} timed out after {timeout_seconds} seconds. "
+                f"{OPENAI_COMPATIBLE_BASE_URL_HINT}"
             ) from exc
-        payload = response.json()
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(
+                f"OpenAI-compatible image provider request to {endpoint} failed before a response was received: {exc}. "
+                f"{OPENAI_COMPATIBLE_BASE_URL_HINT}"
+            ) from exc
+        if response.status_code != 200:
+            raise RuntimeError(
+                format_openai_compatible_status_error(response, endpoint, resolved_model, request_size)
+            )
+        payload = parse_openai_compatible_response_json(response, endpoint)
         image_bytes, actual_mime_type = extract_openai_compatible_image(payload, timeout_seconds)
         actual_mime_type = actual_mime_type or resolved_output_mime_type
 

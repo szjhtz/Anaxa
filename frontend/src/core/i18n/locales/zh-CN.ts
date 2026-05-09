@@ -423,6 +423,8 @@ export const zhCN: Translations = {
     apiKey: "API Key",
     baseUrl: "Base URL",
     testConnection: "测试",
+    testToolKey: "测试密钥",
+    testImageProvider: "测试文生图模型",
     activeProviderBadge: "当前生效",
     imageGenerationMissingFields: "当前生效的文生图提供商缺少必填项：",
     saveAll: "保存配置",

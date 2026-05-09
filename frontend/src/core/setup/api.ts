@@ -67,9 +67,16 @@ export async function testImageProvider(req: TestImageProviderRequest): Promise<
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
-    timeoutMs: 125_000,
-    timeoutErrorMessage: "Current model validation timed out. Please retry later.",
+    // Keep the browser-side timeout slightly above the 3 minute proxy budget
+    // so nginx/backend can return a structured error first when possible.
+    timeoutMs: 190_000,
+    timeoutErrorMessage: "Current image model validation timed out after about 3 minutes. Please retry later.",
   });
-  if (!res.ok) throw await buildApiError(res, `Test request failed: ${res.status}`);
+  if (!res.ok) {
+    const fallback = res.status === 504
+      ? "Image model validation timed out in the gateway before the backend replied. The upstream provider was too slow, or the local reverse proxy timeout is too short."
+      : `Test request failed: ${res.status}`;
+    throw await buildApiError(res, fallback);
+  }
   return res.json() as Promise<TestResult>;
 }

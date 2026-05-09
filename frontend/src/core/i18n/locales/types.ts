@@ -366,6 +366,8 @@ export interface Translations {
     apiKey: string;
     baseUrl: string;
     testConnection: string;
+    testToolKey: string;
+    testImageProvider: string;
     activeProviderBadge: string;
     imageGenerationMissingFields: string;
     saveAll: string;

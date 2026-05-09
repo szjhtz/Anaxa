@@ -12,7 +12,10 @@ GOOGLE_IMAGE_SMOKE_IMAGE_SIZE = "1K"
 GOOGLE_IMAGE_TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 GOOGLE_IMAGE_RETRY_DELAYS_SECONDS = (1.0, 3.0)
 GOOGLE_IMAGE_MAX_ATTEMPTS = 3
-GOOGLE_SETTINGS_VALIDATION_TIMEOUT_SECONDS = 60
+# Setup validation is allowed to use most of the 3 minute proxy budget. The
+# total wall-clock time remains under that ceiling even if the first attempt
+# times out and the retry runs.
+GOOGLE_SETTINGS_VALIDATION_TIMEOUT_SECONDS = 85
 GOOGLE_SETTINGS_VALIDATION_RETRY_DELAYS_SECONDS = (1.0,)
 GOOGLE_SETTINGS_VALIDATION_MAX_ATTEMPTS = 2
 
@@ -141,12 +144,22 @@ def format_google_status_message(status_code: int, payload: dict[str, Any] | Non
         )
         return _append_google_detail(prefix, detail)
     if status_code == 429:
-        prefix = "Google AI Studio returned status 429. The image generation service is rate-limiting requests."
+        prefix = (
+            "Google AI Studio returned status 429. The image generation service is rate-limiting this request; "
+            "this is not an API key configuration error. Retry later or choose another image model."
+        )
+        return _append_google_detail(prefix, detail)
+    if status_code == 503:
+        prefix = (
+            "Google AI Studio returned status 503. The configured image model is temporarily unavailable or overloaded; "
+            "this is not an API key configuration error. Retry later or choose another image model."
+        )
         return _append_google_detail(prefix, detail)
     if status_code in {500, 502, 503, 504}:
         prefix = (
             f"Google AI Studio returned status {status_code}. "
-            "The upstream image service is temporarily unavailable or overloaded; please retry later."
+            "The upstream image service is temporarily unavailable or overloaded; this is not an API key "
+            "configuration error. Retry later or choose another image model."
         )
         return _append_google_detail(prefix, detail)
     return _append_google_detail(f"Google AI Studio returned status {status_code}.", detail)
