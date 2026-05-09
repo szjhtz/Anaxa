@@ -8,6 +8,7 @@ from typing import Any, cast
 from medrix_flow.academic.utils import detect_domain, slugify
 from medrix_flow.runtime.utils import now_iso
 
+from .quality import build_quality_audit
 from .repository import ResearchRepository
 from .types import (
     GATED_TRANSITIONS,
@@ -20,6 +21,7 @@ from .types import (
     ResearchAdvanceResult,
     ResearchGate,
     ResearchLedgerEntry,
+    ResearchQualityAuditRecord,
     ResearchQuest,
     ResearchQuestSnapshot,
     ResearchStage,
@@ -204,6 +206,7 @@ class ResearchQuestService:
             experiment_branches=await self._repository.list_experiment_branches(quest_id),
             manuscript_sections=await self._repository.list_manuscript_sections(quest_id),
             reviewer_reports=await self._repository.list_reviewer_reports(quest_id),
+            quality_audits=await self._repository.list_quality_audits(quest_id),
         )
 
     async def advance_quest(
@@ -262,6 +265,42 @@ class ResearchQuestService:
                     generated={"reason": "high_overlap_risk"},
                 )
         gate_type = GATED_TRANSITIONS.get(next_stage)
+        if next_stage == "final_bundle" and not await self._quality_allows_final_bundle(quest, inputs):
+            gate = await self._ensure_gate(quest, next_stage, "final_quality_repair")
+            if gate.status != "approved":
+                quest.status = "blocked"
+                quest.updated_at = now_iso()
+                quest = await self._repository.update_quest(quest)
+                latest_audit = (await self._repository.list_quality_audits(quest.quest_id))[-1]
+                entry = await self._add_ledger(
+                    quest,
+                    stage=next_stage,
+                    event_type="quality_repair_required",
+                    summary="Final bundle is blocked because quality audit still requires repair.",
+                    inputs=inputs,
+                    outputs={
+                        "gate_type": gate.gate_type,
+                        "quality_audit_status": latest_audit.status,
+                        "repair_actions": latest_audit.repair_actions,
+                        "recommended_queries": latest_audit.recommended_queries,
+                    },
+                    artifacts=artifacts,
+                    tool_name=tool_name,
+                    model_name=model_name,
+                )
+                return ResearchAdvanceResult(
+                    quest=quest,
+                    advanced=False,
+                    blocked=True,
+                    required_gate=gate,
+                    ledger_entry=entry,
+                    generated={
+                        "reason": "quality_repair_required",
+                        "quality_audit_status": latest_audit.status,
+                        "repair_actions": latest_audit.repair_actions,
+                        "recommended_queries": latest_audit.recommended_queries,
+                    },
+                )
         if gate_type:
             gate = await self._ensure_gate(quest, next_stage, gate_type)
             if gate.status != "approved":
@@ -371,6 +410,10 @@ class ResearchQuestService:
     async def list_manuscript_sections(self, quest_id: str) -> list[ManuscriptSectionRecord]:
         await self._require_quest(quest_id)
         return await self._repository.list_manuscript_sections(quest_id)
+
+    async def list_quality_audits(self, quest_id: str) -> list[ResearchQualityAuditRecord]:
+        await self._require_quest(quest_id)
+        return await self._repository.list_quality_audits(quest_id)
 
     async def _apply_stage(
         self,
@@ -670,10 +713,18 @@ class ResearchQuestService:
         evidence = await self._repository.list_claim_evidence(quest.quest_id)
         sections = await self._repository.list_manuscript_sections(quest.quest_id)
         unsupported = len([item for item in evidence if item.support_status == "unsupported"])
-        profiles = ["methodology", "domain", "citation-integrity", "devils-advocate"]
+        audit = await self._create_quality_audit(quest, "review", inputs, evidence=evidence, sections=sections)
+        profiles = [
+            "literature-coverage",
+            "evidence-quantitative",
+            "citation-integrity",
+            "argument-validity",
+            "writing-style",
+            "devils-advocate",
+        ]
         created = 0
         for profile in profiles:
-            score = self._review_score(profile, evidence, sections, unsupported)
+            score = self._review_score(profile, evidence, sections, unsupported, audit)
             verdict = "block" if score < 0.45 else "revise" if score < 0.75 else "pass"
             await self._repository.add_reviewer_report(
                 ReviewerReportRecord(
@@ -683,14 +734,21 @@ class ResearchQuestService:
                     reviewer_profile=profile,
                     score=score,
                     verdict=verdict,
-                    findings=self._review_findings(profile, unsupported, len(sections)),
-                    required_actions=self._review_actions(profile, verdict),
+                    findings=self._review_findings(profile, unsupported, len(sections), audit),
+                    required_actions=self._review_actions(profile, verdict, audit),
                     created_at=now_iso(),
                 )
             )
             created += 1
         await self._ensure_gate(quest, "final_bundle", "final_release")
-        return {"reviewer_count": created, "unsupported_claims": unsupported, "final_gate": "final_release"}
+        return {
+            "reviewer_count": created,
+            "unsupported_claims": unsupported,
+            "quality_audit_status": audit.status,
+            "quality_score": audit.score,
+            "repair_action_count": len(audit.repair_actions),
+            "final_gate": "final_release",
+        }
 
     async def _stage_revision(self, quest: ResearchQuest, inputs: dict[str, Any]) -> dict[str, Any]:
         reports = await self._repository.list_reviewer_reports(quest.quest_id)
@@ -704,11 +762,23 @@ class ResearchQuestService:
 
     async def _stage_final_bundle(self, quest: ResearchQuest, artifacts: list[str]) -> dict[str, Any]:
         snapshot = await self.get_snapshot(quest.quest_id)
+        latest_audit = snapshot.quality_audits[-1] if snapshot.quality_audits else None
+        if latest_audit is None:
+            latest_audit = await self._create_quality_audit(
+                quest,
+                "final_bundle",
+                {},
+                evidence=snapshot.evidence,
+                sections=snapshot.manuscript_sections,
+            )
         return {
             "artifact_count": len(artifacts),
             "claim_count": len(snapshot.evidence),
             "branch_count": len(snapshot.experiment_branches),
             "reviewer_count": len(snapshot.reviewer_reports),
+            "quality_audit_status": latest_audit.status,
+            "quality_score": latest_audit.score,
+            "repair_actions": latest_audit.repair_actions,
             "bundle_policy": "Final output was released after human approval.",
         }
 
@@ -766,12 +836,159 @@ class ResearchQuestService:
             )
         )
 
+    async def _create_quality_audit(
+        self,
+        quest: ResearchQuest,
+        stage: ResearchStage,
+        inputs: dict[str, Any],
+        *,
+        evidence: list[ClaimEvidenceRecord] | None = None,
+        sections: list[ManuscriptSectionRecord] | None = None,
+    ) -> ResearchQualityAuditRecord:
+        evidence = evidence if evidence is not None else await self._repository.list_claim_evidence(quest.quest_id)
+        sections = sections if sections is not None else await self._repository.list_manuscript_sections(quest.quest_id)
+        quality = dict(quest.metadata.get("quality") or {})
+        quality.update(inputs.get("quality") or {})
+        min_reference_count = int(quality.get("min_reference_count") or inputs.get("min_reference_count") or 50)
+        min_cited_reference_count = int(
+            quality.get("min_cited_reference_count") or inputs.get("min_cited_reference_count") or 30
+        )
+        required_topics = inputs.get("required_topics") or quality.get("required_topics") or quest.metadata.get("required_topics") or []
+        reference_count = inputs.get("reference_count") or quest.metadata.get("reference_count")
+        cited_reference_count = inputs.get("cited_reference_count") or quest.metadata.get("cited_reference_count")
+        audit = build_quality_audit(
+            audit_id=f"qa-{uuid.uuid4().hex[:12]}",
+            quest_id=quest.quest_id,
+            stage=stage,
+            topic=quest.topic,
+            evidence=evidence,
+            sections=sections,
+            reference_count=int(reference_count) if reference_count is not None else None,
+            cited_reference_count=int(cited_reference_count) if cited_reference_count is not None else None,
+            min_reference_count=min_reference_count,
+            min_cited_reference_count=min_cited_reference_count,
+            required_topics=list(required_topics) if isinstance(required_topics, list) else [],
+            created_at=now_iso(),
+        )
+        await self._repository.add_quality_audit(audit)
+        await self._add_ledger(
+            quest,
+            stage=stage,
+            event_type="quality_audit",
+            summary=f"Research quality audit returned {audit.status}.",
+            inputs={"quality": quality, "required_topics": required_topics},
+            outputs={
+                "status": audit.status,
+                "score": audit.score,
+                "metrics": audit.metrics,
+                "repair_actions": audit.repair_actions,
+                "recommended_queries": audit.recommended_queries,
+            },
+        )
+        return audit
+
     async def _novelty_allows_experiment(self, quest_id: str) -> bool:
         checks = await self._repository.list_novelty_checks(quest_id)
         if not checks:
             return True
         latest = checks[-1]
         return latest.overlap_risk != "high" and latest.decision == "proceed"
+
+    async def _quality_allows_final_bundle(self, quest: ResearchQuest, inputs: dict[str, Any]) -> bool:
+        quality_mode = str(inputs.get("quality_mode") or quest.metadata.get("quality_mode") or "auto_repair")
+        if quality_mode == "audit_only":
+            return True
+        audits = await self._repository.list_quality_audits(quest.quest_id)
+        latest = audits[-1] if audits else await self._create_quality_audit(quest, "final_bundle", inputs)
+        if latest.status == "pass":
+            return True
+        if quality_mode == "strict_gate":
+            return False
+        repair_attempts = len([entry for entry in await self._repository.list_ledger(quest.quest_id) if entry.event_type == "quality_repair_attempted"])
+        max_repairs = int(quest.metadata.get("max_quality_repair_attempts", 2))
+        return repair_attempts >= max_repairs
+
+    async def attempt_quality_repair(self, quest_id: str) -> ResearchQualityAuditRecord:
+        quest = await self._require_quest(quest_id)
+        prior_audits = await self._repository.list_quality_audits(quest_id)
+        latest = prior_audits[-1] if prior_audits else await self._create_quality_audit(quest, "final_bundle", {})
+        sections = await self._repository.list_manuscript_sections(quest_id)
+        evidence = await self._repository.list_claim_evidence(quest_id)
+        timestamp = now_iso()
+        repair_metadata = {
+            "source_audit_id": latest.audit_id,
+            "source_status": latest.status,
+            "repair_actions": latest.repair_actions,
+            "recommended_queries": latest.recommended_queries,
+        }
+
+        if latest.metrics.get("has_feasibility_section") is False and sections:
+            await self._repository.upsert_manuscript_section(
+                ManuscriptSectionRecord(
+                    section_id=f"section-{uuid.uuid4().hex[:12]}",
+                    quest_id=quest_id,
+                    section_key="implementation_challenges_mitigations",
+                    title="Implementation Challenges and Mitigations",
+                    content=(
+                        "Implementation challenges should be treated as first-class evidence targets. "
+                        "The next revision must bind each challenge to specific papers, benchmarks, "
+                        "datasets, or experiment artifacts before final release."
+                    ),
+                    claim_ids=[item.claim_id for item in evidence],
+                    artifact_paths=[],
+                    status="draft-repair",
+                    created_at=timestamp,
+                    updated_at=timestamp,
+                )
+            )
+        if sections:
+            for section in sections:
+                repaired_content = self._repair_manuscript_style(section.content)
+                if repaired_content != section.content:
+                    section.content = repaired_content
+                    section.status = "draft-repair"
+                    section.updated_at = timestamp
+                    await self._repository.upsert_manuscript_section(section)
+
+        repaired_audit = await self._create_quality_audit(
+            quest,
+            "final_bundle",
+            {},
+            evidence=await self._repository.list_claim_evidence(quest_id),
+            sections=await self._repository.list_manuscript_sections(quest_id),
+        )
+        await self._add_ledger(
+            quest,
+            stage="final_bundle",
+            event_type="quality_repair_attempted",
+            summary="Automatic quality repair attempted before final release.",
+            inputs=repair_metadata,
+            outputs={
+                "new_audit_id": repaired_audit.audit_id,
+                "new_status": repaired_audit.status,
+                "remaining_repair_actions": repaired_audit.repair_actions,
+            },
+        )
+        return repaired_audit
+
+    @staticmethod
+    def _repair_manuscript_style(content: str) -> str:
+        repaired = content
+        replacements = {
+            "bibliography keys are synchronized": "",
+            "citation keys are synchronized": "",
+            "are not enough": "are insufficient in this setting",
+            "is not enough": "is insufficient in this setting",
+            "must support": "should support",
+            "must provide": "should provide",
+            "always": "often",
+            "never": "rarely",
+            "universally": "in many settings",
+            "without exception": "in the evaluated settings",
+        }
+        for needle, replacement in replacements.items():
+            repaired = re.sub(re.escape(needle), replacement, repaired, flags=re.IGNORECASE)
+        return re.sub(r"[ \t]+\n", "\n", repaired).strip()
 
     @staticmethod
     def _next_stage(stage: ResearchStage) -> ResearchStage | None:
@@ -986,6 +1203,7 @@ class ResearchQuestService:
         evidence: list[ClaimEvidenceRecord],
         sections: list[ManuscriptSectionRecord],
         unsupported_count: int,
+        audit: ResearchQualityAuditRecord | None = None,
     ) -> float:
         base = 0.7
         if not evidence:
@@ -996,23 +1214,44 @@ class ResearchQuestService:
             base -= min(0.3, unsupported_count * 0.1)
         if profile == "citation-integrity" and unsupported_count:
             base -= 0.15
+        if audit is not None:
+            base = min(base, audit.score + 0.1)
+            if profile == "literature-coverage" and audit.metrics.get("reference_count", 0) < audit.metrics.get("min_reference_count", 0):
+                base -= 0.2
+            if profile == "evidence-quantitative" and not audit.metrics.get("quantitative_evidence_count"):
+                base -= 0.2
+            if profile == "writing-style" and (
+                audit.metrics.get("repeated_phrase_count", 0)
+                or audit.metrics.get("absolute_phrase_count", 0)
+                or audit.metrics.get("author_note_count", 0)
+            ):
+                base -= 0.2
         if profile == "devils-advocate":
             base -= 0.05
         return max(0.0, min(1.0, base))
 
     @staticmethod
-    def _review_findings(profile: str, unsupported_count: int, section_count: int) -> list[str]:
+    def _review_findings(
+        profile: str,
+        unsupported_count: int,
+        section_count: int,
+        audit: ResearchQualityAuditRecord | None = None,
+    ) -> list[str]:
         findings = [f"{profile} review completed with structured integrity checks."]
         if unsupported_count:
             findings.append(f"{unsupported_count} claim(s) are still marked unsupported.")
         if section_count == 0:
             findings.append("No manuscript sections are available for review.")
+        if audit is not None:
+            findings.extend(audit.findings[:4])
         return findings
 
     @staticmethod
-    def _review_actions(profile: str, verdict: str) -> list[str]:
-        if verdict == "pass":
+    def _review_actions(profile: str, verdict: str, audit: ResearchQualityAuditRecord | None = None) -> list[str]:
+        if verdict == "pass" and (audit is None or not audit.repair_actions):
             return []
+        if audit is not None and audit.repair_actions:
+            return audit.repair_actions
         if profile == "citation-integrity":
             return ["Resolve unsupported claims or explicitly mark them as limitations."]
         if profile == "methodology":

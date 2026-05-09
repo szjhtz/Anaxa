@@ -29,6 +29,8 @@ def _make_config() -> AppConfig:
             manuscript_model="configured-manuscript-model",
             default_auto_gates=["pre_review"],
             default_max_stages=4,
+            default_quality_mode="strict_gate",
+            default_quality_repair_budget=1,
         ),
     )
 
@@ -71,6 +73,8 @@ def test_research_assistant_run_pipeline_action_dispatches(monkeypatch, tmp_path
         quest_id="rq-existing",
         auto_gates=["experiment_execution"],
         max_stages=2,
+        quality_mode="audit_only",
+        quality_repair_budget=3,
     )
 
     import asyncio
@@ -81,6 +85,8 @@ def test_research_assistant_run_pipeline_action_dispatches(monkeypatch, tmp_path
     assert captured["quest_id"] == "rq-existing"
     assert captured["auto_gates"] == ["experiment_execution"]
     assert captured["max_stages"] == 2
+    assert captured["quality_mode"] == "audit_only"
+    assert captured["repair_budget"] == 3
     assert captured["model_name"] == "configured-manuscript-model"
     assert generated["content"] == "configured-manuscript-model:introduction:SimpleNamespace"
     assert "Research pipeline `rq-existing` returned `stopped_at_max_stages`" in message
@@ -120,5 +126,7 @@ def test_research_assistant_run_pipeline_uses_config_defaults(monkeypatch, tmp_p
 
     assert captured["auto_gates"] == ["pre_review"]
     assert captured["max_stages"] == 4
+    assert captured["quality_mode"] == "strict_gate"
+    assert captured["repair_budget"] == 1
     assert captured["model_name"] == "configured-manuscript-model"
     assert "Blocked gate: `experiment_execution`." in command.update["messages"][0].content

@@ -108,6 +108,8 @@ MedrixFlow 不只停留在“会写报告”，还补上了实验与结果图产
 - 文献综述、论文引用、APA/BibTeX、related work、证据映射等任务优先走 `academic_research`，复杂交付可委派给 `academic-researcher`
 - 只有当用户明确需要科研项目生命周期、阶段推进、创新性检查、实验 gate、审稿循环或 final bundle 时，才使用 `research_assistant`
 - 当用户明确要求“一键科研”“从头到尾完成整个研究”或 autopilot research 时，`research_assistant` 会使用 `action="run_pipeline"` 在一次工具调用内推进多个阶段；遇到 `experiment_execution`、`pre_review`、`final_release` 等人工 gate 会停下并交还控制权
+- 综述、论文成稿、survey、manuscript 类任务会启用 review-quality profile：默认至少 50 篇可用 references、目标 80 篇、30 篇正文核心文献，并在入库后生成 `reference_coverage_audit`
+- `research_assistant` 的 review/final 阶段会持久化 `ResearchQualityAudit`，检查引用密度、文献覆盖、外围文献、定量/benchmark 证据、评估可行性、重复或绝对化表述；默认先自动补救，预算耗尽后再进入人工 gate
 - 真实数据实验、模型评估、生信分析和科研图产出继续走 `experiment_lab`
 - 实证社科/计量/公共政策/公共卫生数据研究会加载 `empirical-research-methods`，把 DID、IV、RDD、PSM/IPW、合成控制、DML、target-trial、TMLE、Table 1、稳健性和复现包要求转成 `experiment_lab` metadata 与 research quest gate
 
@@ -205,8 +207,8 @@ MedrixFlow 不只停留在“会写报告”，还补上了实验与结果图产
 
 | 类别 | 工具 | 说明 |
 |------|------|------|
-| 学术研究 | `academic_research` | 结构化文献检索、元数据规范化、论文去重、证据卡沉淀、按用户指定格式导出参考文献 |
-| 科研任务编排 | `research_assistant` | 后台 staged research quest、创新性检查、证据 gate、实验计划、审稿循环、`run_pipeline` 一键推进与 final bundle 管理 |
+| 学术研究 | `academic_research` | 结构化文献检索、元数据规范化、论文去重、证据卡沉淀、review-quality 文献覆盖审计、按用户指定格式导出参考文献 |
+| 科研任务编排 | `research_assistant` | 后台 staged research quest、创新性检查、证据 gate、实验计划、质量审计/自动补救、审稿循环、`run_pipeline` 一键推进与 final bundle 管理 |
 | 实验执行 | `experiment_lab` | Python-first 实验流水线、实证方法 contract、科研图自动路由、结果 bundle 导出 |
 | 沙箱 | bash, ls, read_file, write_file, str_replace | 线程隔离的文件系统操作 |
 | 内置 | present_files, ask_clarification, citation_audit, manuscript_export, view_image, task, visual_quality_check, visual_refinement_check | 文件展示、交互澄清、引用审计、一键论文 PDF 导出、图像理解、子代理委派、视觉质量门控、迭代精修检查 |

@@ -41,6 +41,15 @@ class ResearchConfig(BaseModel):
         ge=1,
         description="Default maximum number of lifecycle stages advanced by one run_pipeline tool call.",
     )
+    default_quality_mode: str = Field(
+        default="auto_repair",
+        description="Default quality gate mode for research_assistant run_pipeline: auto_repair, audit_only, or strict_gate.",
+    )
+    default_quality_repair_budget: int = Field(
+        default=2,
+        ge=0,
+        description="Maximum automatic quality-repair gate approvals per run_pipeline call.",
+    )
 
 
 class AppConfig(BaseModel):

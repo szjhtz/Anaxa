@@ -75,6 +75,8 @@ class ResearchQuestOrchestrator:
         *,
         auto_gates: list[str] | None = None,
         max_stages: int = 11,
+        quality_mode: str = "auto_repair",
+        repair_budget: int = 2,
         content_generator: ContentGenerator | None = None,
         reviewer_generator: ReviewerGenerator | None = None,
     ) -> PipelineRunResult:
@@ -90,6 +92,7 @@ class ResearchQuestOrchestrator:
         allowed_gates = set(auto_gates or [])
         stages_executed: list[PipelineStageEvent] = []
         final_stage: ResearchStage = "intake"
+        repairs_used = 0
 
         try:
             while len(stages_executed) < max_stages:
@@ -131,6 +134,14 @@ class ResearchQuestOrchestrator:
                 )
                 if result.blocked and result.required_gate is not None:
                     gate = result.required_gate
+                    if (
+                        gate.gate_type == "final_quality_repair"
+                        and quality_mode == "auto_repair"
+                        and repairs_used < repair_budget
+                    ):
+                        repairs_used += 1
+                        await self._service.attempt_quality_repair(quest_id)
+                        continue
                     if gate.gate_type in allowed_gates:
                         await self._service.decide_gate(
                             quest_id,

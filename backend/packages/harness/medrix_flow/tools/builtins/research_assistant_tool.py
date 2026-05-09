@@ -119,6 +119,8 @@ async def research_assistant_tool(
     gate_reason: str | None = None,
     auto_gates: list[str] | None = None,
     max_stages: int | None = None,
+    quality_mode: str | None = None,
+    quality_repair_budget: int | None = None,
 ) -> Command:
     """Start, inspect, or advance a staged research quest.
 
@@ -145,6 +147,8 @@ async def research_assistant_tool(
         gate_reason: Optional human reason or note for the gate decision.
         auto_gates: Optional gate types to auto-approve for `run_pipeline`; defaults to config.
         max_stages: Optional max lifecycle stages to advance for `run_pipeline`; defaults to config.
+        quality_mode: Optional quality gate mode for `run_pipeline`: `auto_repair`, `audit_only`, or `strict_gate`.
+        quality_repair_budget: Optional max automatic quality-repair approvals for `run_pipeline`.
     """
     thread_id = runtime.context.get("thread_id")
     if not thread_id:
@@ -221,6 +225,10 @@ async def research_assistant_tool(
                 resolved_quest_id,
                 auto_gates=auto_gates if auto_gates is not None else config.research.default_auto_gates,
                 max_stages=max_stages if max_stages is not None else config.research.default_max_stages,
+                quality_mode=quality_mode or config.research.default_quality_mode,
+                repair_budget=quality_repair_budget
+                if quality_repair_budget is not None
+                else config.research.default_quality_repair_budget,
                 content_generator=_build_content_generator(model_name),
             )
             message = (

@@ -109,6 +109,16 @@ LLM-powered persistent context retention across conversations:
 | **MCP** | Any Model Context Protocol server (stdio, SSE, HTTP transports) |
 | **Skills** | Domain-specific workflows injected via system prompt, including `empirical-research-methods` for DID/IV/RDD/DML/Table 1/robustness empirical research routing |
 
+### Research Quality Gates
+
+Formal review/manuscript requests now run with stronger evidence defaults:
+
+- `academic_research` accepts `deliverable_type`, `min_reference_count`, `target_reference_count`, `required_topics`, and `required_evidence_types`.
+- Review/manuscript/survey/paper deliverables default to a review-quality profile: 50 minimum usable references, 80 target references, and 30 core papers.
+- Ingest stores `reference_coverage_audit` with coverage status, off-topic references, quantitative/benchmark evidence, missing topic/evidence hints, and recommended expansion queries.
+- Research quests persist `ResearchQualityAudit` records during review/final stages. The audit checks citation density, unsupported claims, paper/snippet bindings, quantitative evidence, feasibility discussion, repeated or over-absolute wording, and process-note residue.
+- `research_assistant action="run_pipeline"` defaults to `quality_mode="auto_repair"` and will auto-approve the `final_quality_repair` gate only up to the configured repair budget before returning to a human gate.
+
 ### Gateway API
 
 FastAPI application providing REST endpoints for frontend integration:

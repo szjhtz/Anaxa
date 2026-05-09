@@ -286,6 +286,13 @@ research:
   manuscript_model: null
   default_auto_gates: []
   default_max_stages: 5
+  # Research quality gates:
+  # - auto_repair: automatically pass the final_quality_repair gate up to the
+  #   repair budget, then return to a human final_release gate.
+  # - audit_only: record quality findings but do not block final bundle.
+  # - strict_gate: block final bundle on any failing quality audit.
+  default_quality_mode: auto_repair
+  default_quality_repair_budget: 2
 
 # ============================================================================
 # Sandbox Configuration

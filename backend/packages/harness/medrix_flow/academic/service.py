@@ -39,6 +39,7 @@ from .types import (
     ReferenceEntry,
     ReportExportRecord,
     ResearchProject,
+    SearchQueryRecord,
     SynthesisResult,
 )
 from .utils import (
@@ -53,6 +54,44 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+_REVIEW_DELIVERABLE_TYPES = {
+    "literature_review",
+    "manuscript",
+    "paper",
+    "review",
+    "review_article",
+    "survey",
+    "systematic_review",
+}
+_REVIEW_DELIVERABLE_HINTS = {
+    "literature review",
+    "manuscript",
+    "paper draft",
+    "review article",
+    "survey",
+    "systematic review",
+    "论文",
+    "综述",
+    "成稿",
+}
+_QUANTITATIVE_EVIDENCE_TERMS = {
+    "ablation",
+    "accuracy",
+    "auc",
+    "baseline",
+    "benchmark",
+    "case study",
+    "confidence interval",
+    "dataset",
+    "empirical",
+    "experiment",
+    "f1",
+    "metric",
+    "p-value",
+    "result",
+    "statistical",
+}
 
 
 class AcademicResearchService:
@@ -106,14 +145,32 @@ class AcademicResearchService:
         source_profile: str | None = None,
         quality_mode: str | None = None,
         preprint_policy: str | None = None,
+        deliverable_type: str | None = None,
+        min_reference_count: int | None = None,
+        target_reference_count: int | None = None,
+        required_topics: list[str] | None = None,
+        required_evidence_types: list[str] | None = None,
     ) -> IngestResult:
         project = await self._require_project(project_id)
+        project = await self._apply_coverage_metadata(
+            project,
+            deliverable_type=deliverable_type,
+            min_reference_count=min_reference_count,
+            target_reference_count=target_reference_count,
+            required_topics=required_topics,
+            required_evidence_types=required_evidence_types,
+        )
         queries = build_query_expansions(project)
-        await self._repository.replace_search_queries(project.project_id, queries)
+        all_queries = list(queries)
+        await self._repository.replace_search_queries(project.project_id, all_queries)
 
         resolved_source_profile = source_profile or ("cs_ai_premium" if project.domain == "cs_ai" else "default")
         resolved_quality_mode = quality_mode or ("strict" if project.domain == "cs_ai" else "balanced")
         resolved_preprint_policy = preprint_policy or "prefer_final"
+        coverage_targets = self._coverage_targets(project)
+        if coverage_targets["review_quality_profile"]:
+            max_candidates = max(max_candidates, coverage_targets["target_reference_count"] * 3)
+            core_paper_limit = max(core_paper_limit, coverage_targets["min_core_paper_count"])
 
         configured_adapters = self._adapters or list(
             build_default_adapters(
@@ -126,7 +183,7 @@ class AcademicResearchService:
         terms = topic_terms(project.topic, project.scope)
 
         local_papers = await self._load_local_upload_papers(project) if use_local_uploads else []
-        provider_limit = max(4, min(12, max_candidates // max(len(queries), 1)))
+        provider_limit = max(4, min(25, max_candidates // max(len(queries), 1)))
         raw_papers: list[PaperRecord] = list(local_papers)
 
         for adapter in configured_adapters:
@@ -157,8 +214,44 @@ class AcademicResearchService:
         )
         scored = score_papers(list(merged.values()), terms=terms, quality_mode=resolved_quality_mode)
         stored = await self._repository.upsert_papers(project.project_id, scored)
-        selected = select_core_papers(stored, limit=max(20, min(core_paper_limit, 40)))
+        selected = select_core_papers(stored, limit=max(20, min(core_paper_limit, 80)))
         references = self._build_references(stored, style=self._resolve_reference_style(project))
+        coverage_audit = self._reference_coverage_audit(project, stored, references)
+        repair_query_count = 0
+        repair_candidate_count = 0
+        if coverage_targets["review_quality_profile"] and coverage_audit["status"] != "pass":
+            repair_queries = self._coverage_repair_query_records(project, coverage_audit, existing_queries=all_queries)
+            if repair_queries:
+                all_queries.extend(repair_queries)
+                await self._repository.replace_search_queries(project.project_id, all_queries)
+                repair_raw_papers = await self._fetch_candidates_for_queries(
+                    project,
+                    configured_adapters,
+                    repair_queries,
+                    max_candidates=max(coverage_targets["target_reference_count"], len(repair_queries) * provider_limit),
+                    provider_limit=provider_limit,
+                )
+                if repair_raw_papers:
+                    raw_papers.extend(repair_raw_papers)
+                    normalized_papers = [hydrate_quality_metadata(paper.model_copy(deep=True)) for paper in raw_papers]
+                    merged = self._dedupe_candidates(
+                        normalized_papers,
+                        quality_mode=resolved_quality_mode,
+                        preprint_policy=resolved_preprint_policy,
+                    )
+                    scored = score_papers(list(merged.values()), terms=terms, quality_mode=resolved_quality_mode)
+                    stored = await self._repository.upsert_papers(project.project_id, scored)
+                    selected = select_core_papers(stored, limit=max(20, min(core_paper_limit, 80)))
+                    references = self._build_references(stored, style=self._resolve_reference_style(project))
+                    coverage_audit = self._reference_coverage_audit(project, stored, references)
+                repair_query_count = len(repair_queries)
+                repair_candidate_count = len(repair_raw_papers)
+        coverage_audit = {
+            **coverage_audit,
+            "auto_repair_attempted": repair_query_count > 0,
+            "auto_repair_query_count": repair_query_count,
+            "auto_repair_candidate_count": repair_candidate_count,
+        }
 
         await self._repository.update_project_status(
             project.project_id,
@@ -166,8 +259,8 @@ class AcademicResearchService:
             metadata={
                 "raw_candidate_count": len(raw_papers),
                 "paper_count": len(stored),
-                "query_count": len(queries),
-                "core_paper_limit": max(20, min(core_paper_limit, 40)),
+                "query_count": len(all_queries),
+                "core_paper_limit": max(20, min(core_paper_limit, 80)),
                 "source_profile": resolved_source_profile,
                 "quality_mode": resolved_quality_mode,
                 "preprint_policy": resolved_preprint_policy,
@@ -175,6 +268,7 @@ class AcademicResearchService:
                 "venue_breakdown": venue_breakdown(stored),
                 "preprint_ratio": preprint_ratio(stored),
                 "canonical_reference_count": len([entry for entry in references if entry.included_in_final]),
+                "reference_coverage_audit": coverage_audit,
                 "last_ingested_at": now_iso(),
             },
             domain=project.domain,
@@ -182,7 +276,7 @@ class AcademicResearchService:
         updated_project = await self._require_project(project.project_id)
         return IngestResult(
             project=updated_project,
-            queries=queries,
+            queries=all_queries,
             raw_candidate_count=len(raw_papers),
             paper_count=len(stored),
             selected_papers=selected,
@@ -191,6 +285,37 @@ class AcademicResearchService:
             preprint_ratio=preprint_ratio(stored),
             canonical_reference_count=len([entry for entry in references if entry.included_in_final]),
         )
+
+    async def _fetch_candidates_for_queries(
+        self,
+        project: ResearchProject,
+        adapters: list[AcademicSourceAdapter],
+        queries: list[SearchQueryRecord],
+        *,
+        max_candidates: int,
+        provider_limit: int,
+    ) -> list[PaperRecord]:
+        raw_papers: list[PaperRecord] = []
+        for adapter in adapters:
+            if len(raw_papers) >= max_candidates:
+                break
+            query_window = self._query_window_for_adapter(adapter.name)
+            for query in queries[:query_window]:
+                if len(raw_papers) >= max_candidates:
+                    break
+                try:
+                    results = await adapter.search(
+                        query.query_text,
+                        project_id=project.project_id,
+                        limit=min(provider_limit, max_candidates - len(raw_papers)),
+                    )
+                except Exception:
+                    logger.warning("Academic adapter failed during coverage repair: %s", adapter.name, exc_info=True)
+                    continue
+                raw_papers.extend(results)
+                if adapter.name == "arxiv":
+                    break
+        return raw_papers
 
     async def synthesize_project(
         self,
@@ -284,13 +409,27 @@ class AcademicResearchService:
         quality_mode: str | None = None,
         preprint_policy: str | None = None,
         reference_style: str | None = None,
+        deliverable_type: str | None = None,
+        min_reference_count: int | None = None,
+        target_reference_count: int | None = None,
+        required_topics: list[str] | None = None,
+        required_evidence_types: list[str] | None = None,
     ) -> SynthesisResult:
         normalized_reference_style = normalize_reference_style(reference_style)
         project = await self.create_project(
             thread_id=thread_id,
             topic=topic,
             scope=scope,
-            metadata={"reference_style": normalized_reference_style},
+            metadata={
+                "reference_style": normalized_reference_style,
+                **self._coverage_metadata(
+                    deliverable_type=deliverable_type,
+                    min_reference_count=min_reference_count,
+                    target_reference_count=target_reference_count,
+                    required_topics=required_topics,
+                    required_evidence_types=required_evidence_types,
+                ),
+            },
         )
         await self.ingest_project(
             project.project_id,
@@ -299,6 +438,11 @@ class AcademicResearchService:
             source_profile=source_profile,
             quality_mode=quality_mode,
             preprint_policy=preprint_policy,
+            deliverable_type=deliverable_type,
+            min_reference_count=min_reference_count,
+            target_reference_count=target_reference_count,
+            required_topics=required_topics,
+            required_evidence_types=required_evidence_types,
         )
         return await self.synthesize_project(
             project.project_id,
@@ -328,6 +472,7 @@ class AcademicResearchService:
             "canonical_reference_count": len([entry for entry in references if entry.included_in_final]),
             "reference_style": reference_style,
             "reference_style_label": reference_style_label(reference_style),
+            "reference_coverage_audit": (project.metadata or {}).get("reference_coverage_audit"),
         }
 
     async def get_references(self, project_id: str, *, style: str | None = None) -> list[ReferenceEntry]:
@@ -484,8 +629,214 @@ class AcademicResearchService:
     def _core_papers_for_synthesis(self, project: ResearchProject, papers: list[PaperRecord]) -> list[PaperRecord]:
         metadata = project.metadata or {}
         limit = metadata.get("core_paper_limit") or 24
-        bounded_limit = max(20, min(int(limit), 40))
+        upper_bound = 80 if self._coverage_targets(project)["review_quality_profile"] else 40
+        bounded_limit = max(20, min(int(limit), upper_bound))
         return select_core_papers(papers, limit=bounded_limit)
+
+    async def _apply_coverage_metadata(
+        self,
+        project: ResearchProject,
+        *,
+        deliverable_type: str | None,
+        min_reference_count: int | None,
+        target_reference_count: int | None,
+        required_topics: list[str] | None,
+        required_evidence_types: list[str] | None,
+    ) -> ResearchProject:
+        metadata = self._coverage_metadata(
+            deliverable_type=deliverable_type,
+            min_reference_count=min_reference_count,
+            target_reference_count=target_reference_count,
+            required_topics=required_topics,
+            required_evidence_types=required_evidence_types,
+        )
+        if not metadata:
+            return project
+        await self._repository.update_project_status(
+            project.project_id,
+            status=project.status,
+            metadata=metadata,
+            domain=project.domain,
+        )
+        return await self._require_project(project.project_id)
+
+    def _coverage_metadata(
+        self,
+        *,
+        deliverable_type: str | None,
+        min_reference_count: int | None,
+        target_reference_count: int | None,
+        required_topics: list[str] | None,
+        required_evidence_types: list[str] | None,
+    ) -> dict[str, Any]:
+        normalized_deliverable_type = self._normalize_deliverable_type(deliverable_type)
+        review_quality_profile = normalized_deliverable_type in _REVIEW_DELIVERABLE_TYPES
+        if min_reference_count is not None or target_reference_count is not None:
+            review_quality_profile = True
+
+        metadata: dict[str, Any] = {}
+        if normalized_deliverable_type:
+            metadata["deliverable_type"] = normalized_deliverable_type
+        if required_topics:
+            metadata["required_topics"] = self._normalize_text_list(required_topics)
+        if required_evidence_types:
+            metadata["required_evidence_types"] = self._normalize_text_list(required_evidence_types)
+        if review_quality_profile:
+            minimum = min_reference_count if min_reference_count is not None else 50
+            target = target_reference_count if target_reference_count is not None else max(80, minimum)
+            metadata["review_quality_profile"] = True
+            metadata["min_reference_count"] = max(1, int(minimum))
+            metadata["target_reference_count"] = max(int(target), metadata["min_reference_count"])
+            metadata["min_core_paper_count"] = min(80, max(30, metadata["min_reference_count"] // 2))
+        elif min_reference_count is not None:
+            metadata["min_reference_count"] = max(1, int(min_reference_count))
+        elif target_reference_count is not None:
+            metadata["target_reference_count"] = max(1, int(target_reference_count))
+        return metadata
+
+    def _coverage_targets(self, project: ResearchProject) -> dict[str, Any]:
+        metadata = project.metadata or {}
+        deliverable_type = self._normalize_deliverable_type(metadata.get("deliverable_type"))
+        review_quality_profile = bool(metadata.get("review_quality_profile")) or deliverable_type in _REVIEW_DELIVERABLE_TYPES
+        min_reference_count = int(metadata.get("min_reference_count") or (50 if review_quality_profile else 0))
+        target_reference_count = int(
+            metadata.get("target_reference_count") or (80 if review_quality_profile else max(min_reference_count, 24))
+        )
+        min_core_paper_count = int(metadata.get("min_core_paper_count") or (30 if review_quality_profile else 24))
+        return {
+            "review_quality_profile": review_quality_profile,
+            "min_reference_count": min_reference_count,
+            "target_reference_count": max(target_reference_count, min_reference_count),
+            "min_core_paper_count": min(80, max(1, min_core_paper_count)),
+            "required_topics": self._normalize_text_list(metadata.get("required_topics")),
+            "required_evidence_types": self._normalize_text_list(metadata.get("required_evidence_types")),
+        }
+
+    def _reference_coverage_audit(
+        self,
+        project: ResearchProject,
+        papers: list[PaperRecord],
+        references: list[ReferenceEntry],
+    ) -> dict[str, Any]:
+        targets = self._coverage_targets(project)
+        included_reference_ids = {entry.paper_id for entry in references if entry.included_in_final}
+        included_papers = [paper for paper in papers if paper.paper_id in included_reference_ids]
+        included_count = len(included_papers)
+        topic_tokens = topic_terms(project.topic, project.scope)
+        required_topics = targets["required_topics"]
+        required_evidence_types = targets["required_evidence_types"]
+
+        off_topic = [
+            {
+                "paper_id": paper.paper_id,
+                "title": paper.title,
+                "provider": paper.provider,
+                "topic_fit": round(self._paper_topic_fit(paper, topic_tokens, required_topics), 4),
+            }
+            for paper in included_papers
+            if self._paper_topic_fit(paper, topic_tokens, required_topics) < 0.08
+        ]
+        quantitative_evidence = [
+            paper
+            for paper in included_papers
+            if self._paper_has_any_term(paper, _QUANTITATIVE_EVIDENCE_TERMS)
+        ]
+        missing_required_topics = [
+            topic
+            for topic in required_topics
+            if not any(topic.lower() in self._paper_text(paper).lower() for paper in included_papers)
+        ]
+        missing_evidence_types = [
+            evidence_type
+            for evidence_type in required_evidence_types
+            if not any(evidence_type.lower() in self._paper_text(paper).lower() for paper in included_papers)
+        ]
+        recommended_queries: list[str] = []
+        if included_count < targets["min_reference_count"]:
+            recommended_queries.extend(
+                [
+                    f"{project.topic} review benchmark",
+                    f"{project.topic} systematic review",
+                    f"{project.topic} empirical results",
+                ]
+            )
+        recommended_queries.extend(f"{project.topic} {topic}" for topic in missing_required_topics)
+        recommended_queries.extend(f"{project.topic} {evidence_type}" for evidence_type in missing_evidence_types)
+        if not quantitative_evidence and targets["review_quality_profile"]:
+            recommended_queries.extend(
+                [
+                    f"{project.topic} benchmark dataset",
+                    f"{project.topic} case study empirical",
+                    f"{project.topic} ablation metric",
+                ]
+            )
+
+        status = "pass"
+        findings: list[str] = []
+        if included_count < targets["min_reference_count"]:
+            status = "block"
+            findings.append(
+                f"Usable references below target: {included_count}/{targets['min_reference_count']}."
+            )
+        if off_topic:
+            status = "revise" if status == "pass" else status
+            findings.append(f"{len(off_topic)} reference(s) have weak topic fit.")
+        if targets["review_quality_profile"] and not quantitative_evidence:
+            status = "block"
+            findings.append("No quantitative, benchmark, dataset, metric, or case-study reference was detected.")
+        if missing_required_topics or missing_evidence_types:
+            status = "revise" if status == "pass" else status
+            findings.append("Coverage hints are missing from the final reference set.")
+
+        return {
+            "status": status,
+            "review_quality_profile": targets["review_quality_profile"],
+            "included_reference_count": included_count,
+            "min_reference_count": targets["min_reference_count"],
+            "target_reference_count": targets["target_reference_count"],
+            "min_core_paper_count": targets["min_core_paper_count"],
+            "off_topic_reference_count": len(off_topic),
+            "off_topic_references": off_topic[:12],
+            "quantitative_evidence_count": len(quantitative_evidence),
+            "quantitative_evidence_titles": [paper.title for paper in quantitative_evidence[:12]],
+            "required_topics": required_topics,
+            "missing_required_topics": missing_required_topics,
+            "required_evidence_types": required_evidence_types,
+            "missing_evidence_types": missing_evidence_types,
+            "recommended_queries": sorted(set(recommended_queries)),
+            "findings": findings,
+        }
+
+    def _coverage_repair_query_records(
+        self,
+        project: ResearchProject,
+        coverage_audit: dict[str, Any],
+        *,
+        existing_queries: list[SearchQueryRecord],
+    ) -> list[SearchQueryRecord]:
+        existing = {query.query_text.lower() for query in existing_queries}
+        raw_queries = [str(item).strip() for item in coverage_audit.get("recommended_queries", []) if str(item).strip()]
+        records: list[SearchQueryRecord] = []
+        timestamp = now_iso()
+        for query_text in raw_queries:
+            normalized = " ".join(query_text.split())
+            if not normalized or normalized.lower() in existing:
+                continue
+            records.append(
+                SearchQueryRecord(
+                    query_id=str(uuid.uuid4()),
+                    project_id=project.project_id,
+                    query_text=normalized,
+                    rationale="Auto-repair query generated by reference coverage audit.",
+                    query_type="coverage_repair",
+                    source="quality-audit",
+                    created_at=timestamp,
+                )
+            )
+            existing.add(normalized.lower())
+            if len(records) >= 6:
+                break
+        return records
 
     def _collection_audit(self, papers: list[PaperRecord], references: list[ReferenceEntry]) -> dict[str, Any]:
         included_papers = [paper for paper in papers if self._include_reference_in_export(paper)]
@@ -546,6 +897,69 @@ class AcademicResearchService:
         if not match:
             return None
         return int(match.group(0))
+
+    @classmethod
+    def _normalize_deliverable_type(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if not text:
+            return None
+        if any(hint in text for hint in _REVIEW_DELIVERABLE_HINTS):
+            return "literature_review" if "review" in text or "综述" in text else "manuscript"
+        normalized = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+        return normalized or None
+
+    @staticmethod
+    def _normalize_text_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw_items = re.split(r"[,;\n]+", value)
+        elif isinstance(value, list | tuple | set):
+            raw_items = [str(item) for item in value]
+        else:
+            raw_items = [str(value)]
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in raw_items:
+            text = " ".join(str(item).split()).strip()
+            if not text:
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            cleaned.append(text)
+            seen.add(key)
+        return cleaned
+
+    @staticmethod
+    def _paper_text(paper: PaperRecord) -> str:
+        return " ".join(
+            [
+                paper.title,
+                paper.abstract or "",
+                paper.venue or "",
+                " ".join(paper.keywords),
+                " ".join(paper.methods),
+                " ".join(paper.populations),
+            ]
+        )
+
+    @classmethod
+    def _paper_has_any_term(cls, paper: PaperRecord, terms: set[str]) -> bool:
+        text = cls._paper_text(paper).lower()
+        return any(term in text for term in terms)
+
+    @classmethod
+    def _paper_topic_fit(cls, paper: PaperRecord, topic_tokens: set[str], required_topics: list[str]) -> float:
+        text = cls._paper_text(paper).lower()
+        if required_topics:
+            return sum(1 for topic in required_topics if topic.lower() in text) / len(required_topics)
+        if not topic_tokens:
+            return 1.0
+        paper_tokens = {token for token in re.findall(r"[a-zA-Z][a-zA-Z0-9\-]{2,}", text)}
+        return len(topic_tokens & paper_tokens) / len(topic_tokens)
 
     def _build_outline(self, project: ResearchProject, papers: list[PaperRecord]) -> list[OutlineNodeRecord]:
         now = now_iso()

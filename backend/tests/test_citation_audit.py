@@ -77,6 +77,32 @@ Escaped percent \% still text \citet{doe2025}
     assert nocite_all is False
 
 
+def test_latex_citation_audit_blocks_missing_inline_citations_and_author_notes(tmp_path):
+    bibtex_path = tmp_path / "references.bib"
+    tex_path = tmp_path / "manuscript.tex"
+    bibtex_path.write_text("@article{smith2024,\n  title = {A paper}\n}\n", encoding="utf-8")
+    tex_path.write_text(
+        r"""
+\documentclass{article}
+\begin{document}
+This paragraph is long enough to count as manuscript prose, but it has no inline citation and therefore should be flagged by the audit layer as weak evidence binding.
+
+This paragraph says bibliography keys are synchronized, which is an author process note that must never remain in a final manuscript.
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    result = audit_latex_citations(bibtex_path=bibtex_path, tex_path=tex_path)
+
+    assert result.status == "fail"
+    assert result.paragraph_count == 2
+    assert result.uncited_paragraph_count == 2
+    assert "bibliography keys are synchronized" in result.author_notes
+    assert any("No inline LaTeX citations" in violation for violation in result.violations)
+    assert any("Author/tool process notes" in violation for violation in result.violations)
+
+
 def test_citation_audit_tool_writes_audit_artifact(tmp_path, monkeypatch):
     outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
     outputs_dir.mkdir(parents=True)

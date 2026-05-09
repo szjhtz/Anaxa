@@ -126,7 +126,8 @@ def test_research_quest_lifecycle_gates_and_artifacts():
         )
         review = await service.advance_quest(quest.quest_id)
         assert review.quest.stage == "review"
-        assert review.generated["reviewer_count"] == 4
+        assert review.generated["reviewer_count"] == 6
+        assert review.generated["quality_audit_status"] in {"pass", "revise", "block"}
 
         revision = await service.advance_quest(
             quest.quest_id,
@@ -134,6 +135,24 @@ def test_research_quest_lifecycle_gates_and_artifacts():
         )
         assert revision.quest.stage == "revision"
 
+        blocked_final = await service.advance_quest(quest.quest_id)
+        assert blocked_final.blocked is True
+        assert blocked_final.required_gate is not None
+        assert blocked_final.required_gate.gate_type == "final_quality_repair"
+
+        await service.attempt_quality_repair(quest.quest_id)
+        blocked_final = await service.advance_quest(quest.quest_id)
+        assert blocked_final.blocked is True
+        assert blocked_final.required_gate is not None
+        assert blocked_final.required_gate.gate_type == "final_quality_repair"
+
+        await service.attempt_quality_repair(quest.quest_id)
+        await service.decide_gate(
+            quest.quest_id,
+            stage="final_bundle",
+            gate_type="final_quality_repair",
+            status="approved",
+        )
         blocked_final = await service.advance_quest(quest.quest_id)
         assert blocked_final.blocked is True
         assert blocked_final.required_gate is not None
@@ -154,7 +173,9 @@ def test_research_quest_lifecycle_gates_and_artifacts():
         assert len(snapshot.evidence) == 1
         assert len(snapshot.experiment_branches) == 1
         assert len(snapshot.manuscript_sections) >= 5
-        assert len(snapshot.reviewer_reports) == 4
+        assert len(snapshot.reviewer_reports) == 6
+        assert len(snapshot.quality_audits) >= 1
+        assert any(entry.event_type == "quality_repair_attempted" for entry in snapshot.ledger)
         await db.close()
 
     asyncio.run(scenario())

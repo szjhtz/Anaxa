@@ -154,6 +154,24 @@ def test_manuscript_export_blocks_unsupported_claim_map(tmp_path):
     assert "Unsupported claims: 1" in result.update["messages"][0].content
 
 
+def test_manuscript_export_blocks_author_process_notes(tmp_path):
+    outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
+    outputs_dir.mkdir(parents=True)
+
+    result = manuscript_export_tool_module.manuscript_export_tool.func(
+        runtime=_make_runtime(str(outputs_dir)),
+        tex_content=_tex(r"\cite{smith2024}") + "\n% bibliography keys are synchronized\n",
+        bibtex_content=_bib(),
+        filename_stem="paper",
+        tool_call_id="tc-1",
+    )
+
+    audit = json.loads((outputs_dir / "citation_audit.json").read_text(encoding="utf-8"))
+    assert audit["author_notes"] == ["bibliography keys are synchronized"]
+    assert not (outputs_dir / "paper.pdf").exists()
+    assert "Author/tool process notes remain" in result.update["messages"][0].content
+
+
 def test_manuscript_export_allows_nocite_all_when_explicit(tmp_path, monkeypatch):
     outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
     outputs_dir.mkdir(parents=True)

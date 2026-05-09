@@ -25,6 +25,7 @@ SupportStatus = Literal["supported", "unsupported", "contradicted", "uncertain"]
 OverlapRisk = Literal["low", "medium", "high"]
 BranchStatus = Literal["planned", "running", "completed", "failed", "skipped"]
 ReviewerVerdict = Literal["pass", "revise", "block"]
+QualityAuditStatus = Literal["pass", "revise", "block"]
 
 RESEARCH_STAGES: tuple[ResearchStage, ...] = (
     "intake",
@@ -183,6 +184,19 @@ class ReviewerReportRecord(BaseModel):
     created_at: str
 
 
+class ResearchQualityAuditRecord(BaseModel):
+    audit_id: str
+    quest_id: str
+    stage: ResearchStage
+    status: QualityAuditStatus = "revise"
+    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    findings: list[str] = Field(default_factory=list)
+    repair_actions: list[str] = Field(default_factory=list)
+    recommended_queries: list[str] = Field(default_factory=list)
+    created_at: str
+
+
 class ResearchQuestSnapshot(BaseModel):
     quest: ResearchQuest
     ledger: list[ResearchLedgerEntry] = Field(default_factory=list)
@@ -192,6 +206,7 @@ class ResearchQuestSnapshot(BaseModel):
     experiment_branches: list[ExperimentBranchRecord] = Field(default_factory=list)
     manuscript_sections: list[ManuscriptSectionRecord] = Field(default_factory=list)
     reviewer_reports: list[ReviewerReportRecord] = Field(default_factory=list)
+    quality_audits: list[ResearchQualityAuditRecord] = Field(default_factory=list)
 
 
 class ResearchAdvanceResult(BaseModel):

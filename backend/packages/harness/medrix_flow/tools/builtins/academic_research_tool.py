@@ -24,6 +24,11 @@ async def academic_research_tool(
     max_candidates: int = 120,
     core_paper_limit: int = 24,
     reference_style: str | None = None,
+    deliverable_type: str | None = None,
+    min_reference_count: int | None = None,
+    target_reference_count: int | None = None,
+    required_topics: list[str] | None = None,
+    required_evidence_types: list[str] | None = None,
 ) -> Command:
     """Run the academic literature pipeline and produce report artifacts.
 
@@ -47,6 +52,16 @@ async def academic_research_tool(
         reference_style: Optional reference style requested by the user. Supports
             apa7, mla9, chicago, gbt7714, plain, and bibtex; defaults to apa7
             only when the user does not specify a style.
+        deliverable_type: Optional target deliverable such as literature_review,
+            manuscript, paper, review_article, survey, or short_report.
+        min_reference_count: Optional minimum usable final references. Review
+            and manuscript deliverables default to 50.
+        target_reference_count: Optional target candidate final references.
+            Review and manuscript deliverables default to 80.
+        required_topics: Optional topic/model/benchmark coverage hints that
+            should appear in the final reference set.
+        required_evidence_types: Optional evidence coverage hints such as
+            benchmark, dataset, case study, empirical result, ablation, or metric.
     """
     thread_id = runtime.context.get("thread_id")
     if not thread_id:
@@ -76,6 +91,11 @@ async def academic_research_tool(
             max_candidates=max_candidates,
             core_paper_limit=core_paper_limit,
             reference_style=reference_style,
+            deliverable_type=deliverable_type,
+            min_reference_count=min_reference_count,
+            target_reference_count=target_reference_count,
+            required_topics=required_topics,
+            required_evidence_types=required_evidence_types,
         )
     except Exception as exc:
         await db.close()
@@ -91,12 +111,19 @@ async def academic_research_tool(
             artifact_paths.append(f"{VIRTUAL_PATH_PREFIX}/outputs/{relative.as_posix()}")
         included_refs = len([entry for entry in result.references if entry.included_in_final])
         style = result.references[0].style if result.references else reference_style
+        coverage_audit = (result.project.metadata or {}).get("reference_coverage_audit") or {}
         summary = (
             f"Academic project `{result.project.project_id}` ready. "
             f"Core papers: {len(result.evidence_cards)} evidence cards, "
             f"References ({reference_style_label(style)}): {included_refs}. "
             f"Artifacts: {', '.join(Path(path).name for path in result.export_files)}"
         )
+        if coverage_audit:
+            summary += (
+                f" Coverage audit: {coverage_audit.get('status', 'unknown')} "
+                f"({coverage_audit.get('included_reference_count', included_refs)}/"
+                f"{coverage_audit.get('min_reference_count', 'n/a')} minimum references)."
+            )
         return Command(
             update={
                 "artifacts": artifact_paths,

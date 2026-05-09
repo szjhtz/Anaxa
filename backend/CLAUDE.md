@@ -188,6 +188,8 @@ Config values starting with `$` are resolved as environment variables (e.g., `$O
 - `manuscript_model`: optional model name for manuscript section generation in `research_assistant action="run_pipeline"`; `null` inherits the current thread model.
 - `default_auto_gates`: gate types that `run_pipeline` may auto-approve by default. Keep this empty unless the product deliberately allows unattended gates.
 - `default_max_stages`: maximum lifecycle stages advanced by one `run_pipeline` tool call; defaults to `5` to avoid long blocking tool calls.
+- `default_quality_mode`: final-bundle quality gate mode for `run_pipeline`; `auto_repair` is the default, with `audit_only` and `strict_gate` available for less/more enforcement.
+- `default_quality_repair_budget`: maximum automatic quality-repair approvals before returning to a human gate; defaults to `2`.
 - Academic reference formatting is user-selected. `academic_research`, `/api/academic/projects/{project_id}/synthesize`, and `/api/academic/projects/{project_id}/references` accept `reference_style`/`style` values such as `apa7`, `mla9`, `chicago`, `gbt7714`, `plain`, and `bibtex`; APA 7 is only the compatibility default when no style is specified.
 
 **Extensions Configuration** (`extensions_config.json`):
@@ -272,14 +274,25 @@ The research layer is a harness-only lifecycle system. It must not import `app.*
 
 - `types.py` defines the lifecycle stages, gates, `PipelineStageEvent`, and `PipelineRunResult`.
 - `service.py` owns deterministic persistence and stage handlers. `advance_quest()` remains the single-stage primitive and accepts optional generator callbacks for stages that need LLM content.
+- `quality.py` owns deterministic `ResearchQualityAudit` checks for literature coverage, inline citation density, off-topic evidence, quantitative/benchmark evidence, feasibility discussion, repeated/absolute wording, and author/tool process-note residue.
 - `orchestrator.py` owns longer coordination. `run_pipeline()` loops over `advance_quest()` until `final_bundle`, a non-auto human gate, cancellation, error, or `max_stages`.
 - `tools/builtins/research_assistant_tool.py` exposes `action="run_pipeline"` for end-to-end autonomous research requests. The tool injects manuscript content generation via `create_chat_model()` and keeps service/orchestrator free of model factory dependencies.
-- Human gate defaults are conservative: `experiment_execution`, `pre_review`, and `final_release` stop the pipeline unless explicitly included in `auto_gates` or configured in `research.default_auto_gates`.
+- Human gate defaults are conservative: `experiment_execution`, `pre_review`, and `final_release` stop the pipeline unless explicitly included in `auto_gates` or configured in `research.default_auto_gates`. `final_quality_repair` is auto-approved only by `run_pipeline(quality_mode="auto_repair")` and only up to the configured repair budget.
+
+### Academic Research Quality Coverage
+
+`academic_research` remains the literature retrieval/report primitive, but review/manuscript deliverables now activate a review-quality coverage profile:
+- Tool/API optional parameters: `deliverable_type`, `min_reference_count`, `target_reference_count`, `required_topics`, and `required_evidence_types`.
+- Review/manuscript/survey/paper deliverables default to at least 50 usable references, target 80 references, and at least 30 core papers for synthesis.
+- The ingest step stores `reference_coverage_audit` in project metadata, including coverage status, off-topic reference count, quantitative evidence count, missing required topics/evidence types, and recommended expansion queries.
+- Keep this logic generic; do not hard-code one domain's model or benchmark list as truth. User-provided coverage hints are allowed.
 
 Regression coverage:
 - `tests/test_research_pipeline.py` covers pipeline result serialization, auto gates, max-stage stops, blocked gates, and cancelled quests.
 - `tests/test_research_service.py` covers manuscript content generation fallback and deterministic result synthesis.
 - `tests/test_research_assistant_tool.py` covers `research_assistant action="run_pipeline"` dispatch and config defaults.
+- `tests/test_research_quality.py` covers deterministic quality audit findings.
+- `tests/test_academic_service.py` covers review-quality reference coverage targets and missing coverage hints.
 
 ### MCP System (`packages/harness/medrix_flow/mcp/`)
 

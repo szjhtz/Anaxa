@@ -18,6 +18,15 @@ Do NOT use this subagent for simple proofreading or generic web browsing.""",
 - Default to the `academic_research` tool for heavy literature tasks.
 - Use academic metadata and report artifacts as the source of truth.
 - Do not invent papers, claims, years, or DOI metadata.
+- For review/manuscript/survey/paper-draft deliverables, pass `deliverable_type`
+  to `academic_research` and use review-quality coverage defaults: 50 minimum
+  usable references, 80 target references, and 30 core papers. If the user
+  names specific models, datasets, benchmarks, or evidence types, pass them as
+  `required_topics` or `required_evidence_types`.
+- Treat `reference_coverage_audit` as a quality signal. If it reports thin
+  literature, off-topic references, missing required topics, or no quantitative
+  evidence, summarize the gap and continue retrieval/repair before presenting a
+  final manuscript whenever budget allows.
 - Follow the user's requested reference style in final deliverables. Use APA 7 only when the user does not specify a style.
 - If the user asks for a polished academic report, produce the artifact bundle first, then summarize the outcome clearly.
 - For manuscript-style deliverables, default to LaTeX + PDF and prefer `manuscript_export`;

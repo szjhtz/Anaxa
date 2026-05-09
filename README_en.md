@@ -107,6 +107,8 @@ The platform also keeps strong delivery quality and operational visibility:
 - The sidebar no longer exposes a separate "Research" entry; the primary workflow is normal chat, while `/workspace/research` remains available as an internal or direct Research Dashboard
 - Literature reviews, citations, APA/BibTeX, related work, and evidence mapping prefer `academic_research`, with complex deliverables delegated to `academic-researcher`
 - `research_assistant` is used only when the user clearly asks for a staged research-project lifecycle, stage advancement, novelty checks, experiment gates, reviewer loops, or final bundle release
+- Review, survey, manuscript, and paper-draft tasks activate a review-quality profile: 50 minimum usable references, 80 target references, 30 core papers, and a persisted `reference_coverage_audit`
+- Research quest review/final stages persist `ResearchQualityAudit` records for citation density, reference coverage, off-topic references, quantitative/benchmark evidence, feasibility discussion, repeated or over-absolute wording, and process-note residue; auto-repair runs before handing control back to a human gate
 - Real data experiments, model evaluation, bioinformatics analysis, and scientific figures continue to route through `experiment_lab`
 
 ### Clarification and Confirmation
@@ -201,8 +203,8 @@ The platform also keeps strong delivery quality and operational visibility:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| Academic Research | `academic_research` | Structured literature retrieval, metadata normalization, paper deduplication, evidence-card persistence, and user-selected reference export |
-| Research Orchestration | `research_assistant` | Backend staged research quests, novelty checks, evidence gates, experiment planning, reviewer loops, and final bundle management |
+| Academic Research | `academic_research` | Structured literature retrieval, metadata normalization, paper deduplication, evidence-card persistence, review-quality coverage audit, and user-selected reference export |
+| Research Orchestration | `research_assistant` | Backend staged research quests, novelty checks, evidence gates, experiment planning, quality audit/auto-repair, reviewer loops, and final bundle management |
 | Experiment Execution | `experiment_lab` | Python-first experiment pipeline, scientific figure routing, and result bundle export |
 | Sandbox | bash, ls, read_file, write_file, str_replace | Thread-isolated filesystem operations |
 | Built-in | present_files, ask_clarification, view_image, task, visual_quality_check, visual_refinement_check | File presentation, interactive clarification, image understanding, subagent delegation, visual quality gate, iterative refinement check |

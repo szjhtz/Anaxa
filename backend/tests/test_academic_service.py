@@ -301,3 +301,161 @@ def test_academic_service_writes_requested_reference_style(tmp_path, monkeypatch
         await db.close()
 
     asyncio.run(scenario())
+
+
+def test_academic_service_review_deliverable_applies_coverage_targets(tmp_path, monkeypatch):
+    async def scenario() -> None:
+        monkeypatch.setenv("MEDRIX_FLOW_HOME", str(tmp_path))
+        paths_module._paths = None
+
+        db = SQLiteRuntimeDB(":memory:")
+        await db.connect()
+        repo = AcademicRepository(db)
+        await repo.setup()
+        papers = [
+            _paper(
+                provider="openalex",
+                provider_id=f"review-{idx}",
+                title=f"Core review benchmark evidence {idx}",
+                year=2024,
+                venue="Journal of Evaluation",
+                doi=f"10.8000/review-{idx}",
+                abstract="A benchmark dataset and empirical result for review-quality evidence.",
+            )
+            for idx in range(12)
+        ]
+        service = AcademicResearchService(repo, adapters=[FakeAdapter("openalex", papers)])
+        project = await service.create_project(thread_id="thread-review-quality", topic="agent evaluation frameworks")
+
+        await service.ingest_project(
+            project.project_id,
+            max_candidates=20,
+            core_paper_limit=20,
+            deliverable_type="literature_review",
+            min_reference_count=50,
+            required_topics=["agent evaluation"],
+            required_evidence_types=["benchmark", "dataset"],
+        )
+        summary = await service.get_project_summary(project.project_id)
+        audit = summary["reference_coverage_audit"]
+
+        assert summary["project"]["metadata"]["review_quality_profile"] is True
+        assert summary["project"]["metadata"]["target_reference_count"] == 80
+        assert summary["project"]["metadata"]["core_paper_limit"] >= 30
+        assert audit["status"] == "block"
+        assert audit["included_reference_count"] == 12
+        assert audit["min_reference_count"] == 50
+        assert audit["quantitative_evidence_count"] == 12
+        assert audit["auto_repair_attempted"] is True
+        assert audit["auto_repair_query_count"] >= 1
+        assert summary["project"]["metadata"]["query_count"] > 10
+        assert any("systematic review" in query for query in audit["recommended_queries"])
+
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_academic_service_coverage_auto_repair_can_fill_review_reference_gap(tmp_path, monkeypatch):
+    async def scenario() -> None:
+        monkeypatch.setenv("MEDRIX_FLOW_HOME", str(tmp_path))
+        paths_module._paths = None
+
+        class RepairAwareAdapter:
+            name = "openalex"
+
+            async def search(self, query: str, *, project_id: str, limit: int) -> list[PaperRecord]:
+                if "systematic review" in query.lower() or "empirical results" in query.lower():
+                    start = 10 if "systematic review" in query.lower() else 30
+                    count = min(limit, 20)
+                else:
+                    start = 0
+                    count = min(limit, 10)
+                return [
+                    _paper(
+                        provider="openalex",
+                        provider_id=f"repair-{start + idx}",
+                        title=f"Agent evaluation frameworks repair benchmark evidence {start + idx}",
+                        year=2024,
+                        venue="Journal of Repair Evidence",
+                        doi=f"10.8200/repair-{start + idx}",
+                        abstract="A benchmark dataset and empirical result for agent evaluation frameworks review-quality coverage.",
+                    ).model_copy(update={"project_id": project_id, "paper_id": f"{project_id}:repair-{start + idx}"})
+                    for idx in range(count)
+                ]
+
+        db = SQLiteRuntimeDB(":memory:")
+        await db.connect()
+        repo = AcademicRepository(db)
+        await repo.setup()
+        service = AcademicResearchService(repo, adapters=[RepairAwareAdapter()])
+        project = await service.create_project(thread_id="thread-review-repair", topic="agent evaluation frameworks")
+
+        await service.ingest_project(
+            project.project_id,
+            max_candidates=20,
+            core_paper_limit=20,
+            deliverable_type="literature_review",
+            min_reference_count=30,
+            target_reference_count=40,
+        )
+        summary = await service.get_project_summary(project.project_id)
+        audit = summary["reference_coverage_audit"]
+
+        assert audit["auto_repair_attempted"] is True
+        assert audit["auto_repair_candidate_count"] > 0
+        assert audit["included_reference_count"] >= 30
+        assert audit["status"] == "pass"
+
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_academic_service_coverage_audit_reports_missing_required_topic(tmp_path, monkeypatch):
+    async def scenario() -> None:
+        monkeypatch.setenv("MEDRIX_FLOW_HOME", str(tmp_path))
+        paths_module._paths = None
+
+        db = SQLiteRuntimeDB(":memory:")
+        await db.connect()
+        repo = AcademicRepository(db)
+        await repo.setup()
+        service = AcademicResearchService(
+            repo,
+            adapters=[
+                FakeAdapter(
+                    "openalex",
+                    [
+                        _paper(
+                            provider="openalex",
+                            provider_id="topic-gap",
+                            title="Benchmark evidence for generic evaluation",
+                            year=2024,
+                            venue="Journal of Evaluation",
+                            doi="10.8100/topic-gap",
+                            abstract="A benchmark dataset with empirical results for evaluation.",
+                        )
+                    ],
+                )
+            ],
+        )
+        project = await service.create_project(thread_id="thread-topic-gap", topic="agent evaluation frameworks")
+
+        await service.ingest_project(
+            project.project_id,
+            max_candidates=20,
+            core_paper_limit=20,
+            deliverable_type="short_report",
+            min_reference_count=1,
+            required_topics=["virtual cell foundation model"],
+        )
+        audit = (await service.get_project_summary(project.project_id))["reference_coverage_audit"]
+
+        assert audit["status"] == "revise"
+        assert audit["missing_required_topics"] == ["virtual cell foundation model"]
+        assert "agent evaluation frameworks virtual cell foundation model" in audit["recommended_queries"]
+
+        await db.close()
+
+    asyncio.run(scenario())

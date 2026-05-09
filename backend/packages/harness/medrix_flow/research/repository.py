@@ -12,6 +12,7 @@ from .types import (
     NoveltyCheckRecord,
     ResearchGate,
     ResearchLedgerEntry,
+    ResearchQualityAuditRecord,
     ResearchQuest,
     ReviewerReportRecord,
 )
@@ -176,6 +177,22 @@ class ResearchRepository:
                 );
                 CREATE INDEX IF NOT EXISTS idx_research_reviews_quest
                     ON research_reviewer_reports(quest_id, created_at ASC);
+
+                CREATE TABLE IF NOT EXISTS research_quality_audits (
+                    audit_id TEXT PRIMARY KEY,
+                    quest_id TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    metrics_json TEXT NOT NULL,
+                    findings_json TEXT NOT NULL,
+                    repair_actions_json TEXT NOT NULL,
+                    recommended_queries_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(quest_id) REFERENCES research_quests(quest_id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_research_quality_audits_quest
+                    ON research_quality_audits(quest_id, created_at ASC);
                 """
             )
             await self._db.conn.commit()
@@ -635,6 +652,53 @@ class ResearchRepository:
             )
             await self._db.conn.commit()
         return record
+
+    async def add_quality_audit(self, record: ResearchQualityAuditRecord) -> ResearchQualityAuditRecord:
+        async with self._db.lock:
+            await self._db.conn.execute(
+                """
+                INSERT INTO research_quality_audits (
+                    audit_id, quest_id, stage, status, score, metrics_json,
+                    findings_json, repair_actions_json, recommended_queries_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.audit_id,
+                    record.quest_id,
+                    record.stage,
+                    record.status,
+                    record.score,
+                    _to_json(record.metrics),
+                    _to_json(record.findings),
+                    _to_json(record.repair_actions),
+                    _to_json(record.recommended_queries),
+                    record.created_at,
+                ),
+            )
+            await self._db.conn.commit()
+        return record
+
+    async def list_quality_audits(self, quest_id: str) -> list[ResearchQualityAuditRecord]:
+        cursor = await self._db.conn.execute(
+            "SELECT * FROM research_quality_audits WHERE quest_id = ? ORDER BY created_at ASC",
+            (quest_id,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            ResearchQualityAuditRecord(
+                audit_id=row["audit_id"],
+                quest_id=row["quest_id"],
+                stage=row["stage"],
+                status=row["status"],
+                score=float(row["score"]),
+                metrics=_from_json(row["metrics_json"], {}),
+                findings=_from_json(row["findings_json"], []),
+                repair_actions=_from_json(row["repair_actions_json"], []),
+                recommended_queries=_from_json(row["recommended_queries_json"], []),
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
 
     async def list_reviewer_reports(self, quest_id: str) -> list[ReviewerReportRecord]:
         cursor = await self._db.conn.execute(

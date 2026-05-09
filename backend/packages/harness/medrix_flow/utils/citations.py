@@ -31,6 +31,9 @@ class CitationAuditResult:
     nocite_all: bool
     violations: list[str] = field(default_factory=list)
     unsupported_claims: list[str] = field(default_factory=list)
+    paragraph_count: int = 0
+    uncited_paragraph_count: int = 0
+    author_notes: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -48,6 +51,9 @@ class CitationAuditResult:
             "nocite_all": self.nocite_all,
             "violations": self.violations,
             "unsupported_claims": self.unsupported_claims,
+            "paragraph_count": self.paragraph_count,
+            "uncited_paragraph_count": self.uncited_paragraph_count,
+            "author_notes": self.author_notes,
         }
 
 
@@ -116,6 +122,35 @@ def find_unsupported_claims(claims: Any) -> list[str]:
     return unsupported
 
 
+def find_author_notes(source: str) -> list[str]:
+    notes = []
+    lowered = source.lower()
+    for pattern in (
+        "bibliography keys are synchronized",
+        "citation keys are synchronized",
+        "cannot actually",
+        "i cannot",
+        "i can't",
+        "as an ai",
+    ):
+        if pattern in lowered:
+            notes.append(pattern)
+    return notes
+
+
+def citation_paragraph_stats(source: str) -> tuple[int, int]:
+    stripped = "\n".join(_UNESCAPED_COMMENT_RE.sub("", line) for line in source.splitlines())
+    body_match = re.search(r"\\begin\{document\}(?P<body>.*)\\end\{document\}", stripped, flags=re.DOTALL)
+    body = body_match.group("body") if body_match else stripped
+    paragraphs = [
+        paragraph.strip()
+        for paragraph in re.split(r"\n\s*\n", body)
+        if len(re.sub(r"\\[A-Za-z]+\*?(?:\[[^\]]*\])?(?:\{[^{}]*\})?", "", paragraph).strip()) >= 80
+    ]
+    uncited = [paragraph for paragraph in paragraphs if not _LATEX_CITE_RE.search(paragraph)]
+    return len(paragraphs), len(uncited)
+
+
 def audit_latex_citations(
     *,
     bibtex_path: Path,
@@ -129,9 +164,15 @@ def audit_latex_citations(
     citation_keys = extract_bibtex_keys(bibtex_source)
     cited_keys: list[str] = []
     nocite_all = False
+    paragraph_count = 0
+    uncited_paragraph_count = 0
+    author_notes: list[str] = []
 
     if tex_path is not None:
-        cited_keys, nocite_all = extract_latex_citations(tex_path.read_text(encoding="utf-8"))
+        tex_source = tex_path.read_text(encoding="utf-8")
+        cited_keys, nocite_all = extract_latex_citations(tex_source)
+        paragraph_count, uncited_paragraph_count = citation_paragraph_stats(tex_source)
+        author_notes = find_author_notes(tex_source)
 
     missing_keys = sorted(key for key in cited_keys if key not in set(citation_keys))
     unused_keys = sorted(key for key in citation_keys if key not in set(cited_keys))
@@ -148,8 +189,14 @@ def audit_latex_citations(
         violations.append(f"Missing BibTeX keys cited in LaTeX: {', '.join(missing_keys)}.")
     if nocite_all and not allow_nocite_all:
         violations.append(r"\nocite{*} is not allowed unless the user explicitly asks to include every reference.")
+    if tex_path is not None and not cited_keys and not (nocite_all and allow_nocite_all):
+        violations.append("No inline LaTeX citations were found in the manuscript body.")
+    if paragraph_count and uncited_paragraph_count / paragraph_count > 0.5:
+        violations.append(f"Too many manuscript paragraphs lack inline citations: {uncited_paragraph_count}/{paragraph_count}.")
     if unsupported_claims:
         violations.append(f"Unsupported manuscript claims: {len(unsupported_claims)}.")
+    if author_notes:
+        violations.append("Author/tool process notes remain in manuscript text: " + ", ".join(author_notes) + ".")
 
     return CitationAuditResult(
         status="fail" if violations else "pass",
@@ -162,6 +209,9 @@ def audit_latex_citations(
         nocite_all=nocite_all,
         violations=violations,
         unsupported_claims=unsupported_claims,
+        paragraph_count=paragraph_count,
+        uncited_paragraph_count=uncited_paragraph_count,
+        author_notes=author_notes,
     )
 
 

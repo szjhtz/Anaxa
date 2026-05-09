@@ -76,8 +76,30 @@ def test_research_pipeline_happy_path_auto_approves_gates():
         assert {gate.gate_type: gate.status for gate in snapshot.gates} == {
             "experiment_execution": "approved",
             "pre_review": "approved",
+            "final_quality_repair": "pending",
             "final_release": "approved",
         }
+        assert len([entry for entry in snapshot.ledger if entry.event_type == "quality_repair_required"]) == 2
+        assert len([entry for entry in snapshot.ledger if entry.event_type == "quality_repair_attempted"]) == 2
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_research_pipeline_strict_quality_mode_blocks_on_quality_gate():
+    async def scenario() -> None:
+        orchestrator, service, _repo, db = await _make_pipeline()
+        quest = await service.create_quest(thread_id="thread-pipeline-quality", topic="citation integrity for agents")
+
+        result = await orchestrator.run_pipeline(
+            quest.quest_id,
+            auto_gates=["experiment_execution", "pre_review", "final_release"],
+            quality_mode="strict_gate",
+        )
+
+        assert result.status == "blocked_on_gate"
+        assert result.blocked_gate == "final_quality_repair"
+        assert result.final_stage == "revision"
         await db.close()
 
     asyncio.run(scenario())
