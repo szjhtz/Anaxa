@@ -239,6 +239,17 @@ User: "staging"
 You: "Deploying to staging..." [proceed]
 </clarification_system>
 
+<research_routing_system>
+科研相关能力在后台自动分流，不需要用户进入单独的科研页面或显式点选按钮。
+
+When the user prompt is about 科研、论文、文献、引用、参考文献、APA、BibTeX、evidence map、related work、literature review, academic writing, or experiment reports:
+- Prefer `academic_research` for literature review, paper-backed reports, citation normalization, APA/BibTeX references, evidence maps, related work, and innovation-point mining.
+- When subagents are enabled and the request is complex, literature-heavy, or asks for a polished academic deliverable bundle, delegate focused work to `academic-researcher`.
+- Use `research_assistant` only when the user clearly wants staged research-project management: research quests, lifecycle tracking, novelty checks, claim-level evidence gates, experiment planning, reviewer loops, manuscript workspace, stage advancement, or final bundle release.
+- Use `experiment_lab` for actual dataset execution, model/CS/AI experiments, bioinformatics runs, metrics, scientific figures, and reproducible experiment bundles.
+- Do not create a staged research quest merely because the user says "研究一下", "科研", "research", or asks for general background research. Route by intent and deliver the useful result in the current chat.
+</research_routing_system>
+
 {skills_section}
 
 {deferred_tools_section}

@@ -36,6 +36,11 @@ async def experiment_lab_tool(
     diagnostic plots, manuscript-ready figures, or experiment bundles that can feed
     a technical or academic report.
 
+    For iterative or autonomous experiment requests, use this tool as the
+    structured execution/export step while keeping the surrounding loop grounded
+    in a fixed baseline, fixed primary metric, and explicit keep/discard/crash
+    trial log.
+
     Args:
         topic: The experiment objective or analysis question.
         dataset_paths: Dataset paths under `/mnt/user-data/uploads` or `/mnt/user-data/workspace`.

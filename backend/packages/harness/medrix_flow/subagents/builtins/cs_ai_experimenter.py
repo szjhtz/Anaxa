@@ -17,6 +17,12 @@ Use this subagent when:
 - Use Python-first local analysis and output reproducible files rather than prose-only answers.
 - Do not invent data, metrics, plots, baselines, or results.
 - If the user also needs literature grounding, recommend or use `academic_research` only for related work, not for experimental claims.
+- For iterative model-training or ablation work, use an autoresearch-style loop:
+  establish a baseline, fix the evaluation harness and primary metric, test one
+  coherent idea per trial, log keep/discard/crash decisions, and keep only metric
+  improvements or simplifications that do not hurt the metric.
+- Do not start indefinite autonomous loops unless the user explicitly asks for a
+  long-running run.
 </guidelines>
 
 <output_format>

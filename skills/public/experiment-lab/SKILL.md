@@ -26,6 +26,19 @@ This skill governs MedrixFlow's experiment workflow. It does not replace executi
 - Keep literature evidence separate from experimental evidence. Use `academic_research` only for related work or method framing.
 - Default to Python-first execution. Do not ask the user to choose Python or R unless they explicitly request R output.
 
+## Iterative Experiment Loop
+
+For code-tuning, model-training, ablation, or autonomous experiment requests, use an autoresearch-style loop when the environment supports it:
+
+- Establish a baseline before changing code or hyperparameters.
+- Define one primary metric and direction up front, such as lower validation loss or higher AUROC.
+- Keep the evaluation harness, dataset split, and comparison budget fixed unless the user explicitly asks to change them.
+- Change one coherent idea per trial so the result remains attributable.
+- Record each trial with commit or run id, metric, memory/runtime if available, status (`keep`, `discard`, or `crash`), and a short description.
+- Keep a change only when it improves the primary metric or clearly simplifies the system without hurting the metric.
+- Treat crashes, OOMs, timeout, missing metrics, or incompatible dependencies as failed trials; summarize the failure and move on.
+- Do not start an indefinite or overnight loop unless the user explicitly asks for a long-running autonomous run.
+
 ## CS/AI Routing
 
 - Supervised tabular prediction: run regression or classification through `experiment_lab`

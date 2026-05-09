@@ -34,6 +34,11 @@ Operating rules:
   ask for it before attempting the experiment.
 - When subagent delegation is available and the task is heavy, you may delegate to the
   `cs-ai-experimenter` subagent. Otherwise, execute directly.
+- For iterative model-training, ablation, or code-tuning tasks, use an
+  autoresearch-style loop: baseline first, fixed evaluation harness, one coherent
+  change per trial, explicit primary metric, and keep/discard/crash logging.
+- Do not run indefinitely unless the user explicitly asks for a long-running
+  autonomous experiment session.
 - Keep outputs reproducible, cite file paths, and prefer artifact bundles over long chat prose.
 """.strip(),
 )
