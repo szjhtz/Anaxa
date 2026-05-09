@@ -90,6 +90,11 @@ class Paths:
         return self.base_dir / "experiment.sqlite3"
 
     @property
+    def research_db_file(self) -> Path:
+        """Path to the end-to-end research quest persistence database."""
+        return self.base_dir / "research.sqlite3"
+
+    @property
     def user_md_file(self) -> Path:
         """Path to the global user profile file: `{base_dir}/USER.md`."""
         return self.base_dir / "USER.md"

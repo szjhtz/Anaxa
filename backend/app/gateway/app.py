@@ -15,6 +15,7 @@ from app.gateway.routers import (
     mcp,
     memory,
     models,
+    research,
     runs,
     setup,
     skills,
@@ -121,6 +122,10 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "Structured experiment planning, execution, figure routing, and artifact bundles",
             },
             {
+                "name": "research",
+                "description": "End-to-end research quest lifecycle, evidence gates, reviewer loops, and manuscript workspace",
+            },
+            {
                 "name": "models",
                 "description": "Operations for querying available AI models and their configurations",
             },
@@ -178,6 +183,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Experiment API is mounted at /api/experiments
     app.include_router(experiments.router)
+
+    # Research quest API is mounted at /api/research
+    app.include_router(research.router)
 
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)

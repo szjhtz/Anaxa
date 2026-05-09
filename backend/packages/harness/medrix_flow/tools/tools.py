@@ -9,6 +9,7 @@ from medrix_flow.tools.builtins import (
     ask_clarification_tool,
     experiment_lab_tool,
     present_file_tool,
+    research_assistant_tool,
     task_tool,
     view_image_tool,
     visual_quality_check_tool,
@@ -23,6 +24,7 @@ BUILTIN_TOOLS = [
     ask_clarification_tool,
     academic_research_tool,
     experiment_lab_tool,
+    research_assistant_tool,
 ]
 
 SUBAGENT_TOOLS = [
