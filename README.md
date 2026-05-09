@@ -12,23 +12,23 @@
 
 <p align="center">
   <b>面向学术写作与实验报告的 AI 研究代理平台</b><br/>
-  文献检索 · APA 7 References · 实验证据沉淀 · 多代理协作
+  文献检索 · 多格式 References · 实验证据沉淀 · 多代理协作
 </p>
 
 ---
 
-MedrixFlow 是一个面向学术写作、文献综述、实验报告和研究交付的全栈 AI 代理编排平台。后端基于 LangGraph 实现多代理协作与状态管理，前端基于 Next.js 16 提供 thread-based chat 与 artifact 工作流。除了通用代理能力外，MedrixFlow 现在内置了结构化学术检索、APA 7 参考文献导出、CS/AI 与生物信息实验专家 Agent、本地证据库与报告产物交付链路，并在普通聊天中按用户意图自动分流科研、文献和实验任务，重点解决“学术感不足、引用不规范、实验结果难沉淀”的问题。
+MedrixFlow 是一个面向学术写作、文献综述、实验报告和研究交付的全栈 AI 代理编排平台。后端基于 LangGraph 实现多代理协作与状态管理，前端基于 Next.js 16 提供 thread-based chat 与 artifact 工作流。除了通用代理能力外，MedrixFlow 现在内置了结构化学术检索、多格式参考文献导出、CS/AI 与生物信息实验专家 Agent、本地证据库与报告产物交付链路，并在普通聊天中按用户意图自动分流科研、文献和实验任务，重点解决“学术感不足、引用不规范、实验结果难沉淀”的问题。
 
 ## 技术亮点
 
-### 1. 学术研究闭环：从主题到 APA 7 References
+### 1. 学术研究闭环：从主题到用户指定 References
 
 围绕正式学术报告的核心链路，MedrixFlow 提供了一套后台自动分流的研究能力：
 
 - **内置学术子代理**：`academic-researcher` 专门负责主题拆解、扩展检索、候选论文筛选、证据卡沉淀、大纲构建与参考文献导出
 - **聊天内科研分流**：普通聊天中出现文献、论文、引用、APA/BibTeX、evidence map、related work 等意图时，优先走 `academic_research` 或复杂任务下的 `academic-researcher`
 - **CS/AI 正式文献优先**：`cs_ai` 默认走 `DBLP`、`OpenReview`、`ACL Anthology`、`Semantic Scholar`、`OpenAlex`、`Crossref`、`arXiv` 的组合栈，并优先选择 conference/journal 正式版作为 canonical reference
-- **正式报告导出**：单次研究任务可沉淀 `report.md`、`references.md`、`references.bib`、`evidence_map.json`、`retrieval_audit.json`，并按需导出 `graph.json`
+- **正式报告导出**：单次研究任务可沉淀 `report.md`、按用户指定样式格式化的 `references.md`、`references.bib`、`evidence_map.json`、`retrieval_audit.json`，并按需导出 `graph.json`
 - **本地证据存储**：研究项目、论文元数据、证据卡、章节映射与引用格式化结果都落到本地 SQLite，便于后续增量补文献与复用
 
 ### 2. 实验专家 Agent：CS/AI 与生信双路径
@@ -107,6 +107,7 @@ MedrixFlow 不只停留在“会写报告”，还补上了实验与结果图产
 - 侧边栏不再单独展示“科研”入口，主工作流回到普通聊天；`/workspace/research` 仍保留为内部或直连 Research Dashboard
 - 文献综述、论文引用、APA/BibTeX、related work、证据映射等任务优先走 `academic_research`，复杂交付可委派给 `academic-researcher`
 - 只有当用户明确需要科研项目生命周期、阶段推进、创新性检查、实验 gate、审稿循环或 final bundle 时，才使用 `research_assistant`
+- 当用户明确要求“一键科研”“从头到尾完成整个研究”或 autopilot research 时，`research_assistant` 会使用 `action="run_pipeline"` 在一次工具调用内推进多个阶段；遇到 `experiment_execution`、`pre_review`、`final_release` 等人工 gate 会停下并交还控制权
 - 真实数据实验、模型评估、生信分析和科研图产出继续走 `experiment_lab`
 - 实证社科/计量/公共政策/公共卫生数据研究会加载 `empirical-research-methods`，把 DID、IV、RDD、PSM/IPW、合成控制、DML、target-trial、TMLE、Table 1、稳健性和复现包要求转成 `experiment_lab` metadata 与 research quest gate
 
@@ -204,8 +205,8 @@ MedrixFlow 不只停留在“会写报告”，还补上了实验与结果图产
 
 | 类别 | 工具 | 说明 |
 |------|------|------|
-| 学术研究 | `academic_research` | 结构化文献检索、元数据规范化、论文去重、证据卡沉淀、APA 参考文献导出 |
-| 科研任务编排 | `research_assistant` | 后台 staged research quest、创新性检查、证据 gate、实验计划、审稿循环与 final bundle 管理 |
+| 学术研究 | `academic_research` | 结构化文献检索、元数据规范化、论文去重、证据卡沉淀、按用户指定格式导出参考文献 |
+| 科研任务编排 | `research_assistant` | 后台 staged research quest、创新性检查、证据 gate、实验计划、审稿循环、`run_pipeline` 一键推进与 final bundle 管理 |
 | 实验执行 | `experiment_lab` | Python-first 实验流水线、实证方法 contract、科研图自动路由、结果 bundle 导出 |
 | 沙箱 | bash, ls, read_file, write_file, str_replace | 线程隔离的文件系统操作 |
 | 内置 | present_files, ask_clarification, citation_audit, manuscript_export, view_image, task, visual_quality_check, visual_refinement_check | 文件展示、交互澄清、引用审计、一键论文 PDF 导出、图像理解、子代理委派、视觉质量门控、迭代精修检查 |
@@ -219,8 +220,8 @@ MedrixFlow 不只停留在“会写报告”，还补上了实验与结果图产
 |------|------|
 | `POST /api/academic/projects` | 创建或复用学术研究项目，绑定 `thread_id` 与研究主题 |
 | `POST /api/academic/projects/{project_id}/ingest` | 多源抓取论文、归一化元数据、去重并沉淀证据池 |
-| `POST /api/academic/projects/{project_id}/synthesize` | 生成正式报告、APA 参考文献、BibTeX 与证据映射文件 |
-| `GET /api/academic/projects/{project_id}/references?style=apa7` | 读取 APA 7 参考文献结果 |
+| `POST /api/academic/projects/{project_id}/synthesize` | 生成正式报告、指定格式参考文献、BibTeX 与证据映射文件；`reference_style` 未指定时默认 APA 7 |
+| `GET /api/academic/projects/{project_id}/references?style=gbt7714` | 按指定样式读取参考文献结果，支持 `apa7`、`mla9`、`chicago`、`gbt7714`、`plain`、`bibtex` |
 | `POST /api/research/quests` | 后台或直连 Research Dashboard 创建 staged research quest |
 | `POST /api/research/quests/{quest_id}/advance` | 推进 intake、literature、novelty、evidence、experiment、manuscript、review、final bundle 等阶段 |
 | `POST /api/research/quests/{quest_id}/gate` | 记录实验执行、预审、最终发布等人工 gate 决策 |
@@ -231,7 +232,7 @@ MedrixFlow 不只停留在“会写报告”，还补上了实验与结果图产
 ## 学术写作新增能力
 
 - **文献综述 / related work**：给定研究主题后，可走 `academic-researcher` + `academic-deep-research` 工作流，自动完成检索式扩展、多源抓取、去重、核心论文池构建与证据映射
-- **APA 7 References**：正式报告链路会导出当前项目中全部已核验 canonical references，不设导出上限，并自动生成 `references.md`、`references.bib` 与 `retrieval_audit.json`
+- **多格式 References**：正式报告链路会按用户指定样式导出当前项目中全部已核验 canonical references，不设导出上限，并自动生成 `references.md`、`references.bib` 与 `retrieval_audit.json`；未指定时使用 APA 7 作为兼容默认值
 - **实验支撑写作**：`cs-ai-lab` 与 `bioinformatics-lab` 可直接把表格实验或生信分析结果转成 figures / tables / methods / results bundle，减少“论文只有文字没有实验”的断层
 - **可控迭代实验**：受 autoresearch-style 思路启发，模型训练和消融类实验默认强调 baseline、固定指标、固定评估预算和 `keep` / `discard` / `crash` 记录，而不是无约束地修改代码
 - **本地证据沉淀**：学术项目与实验项目都可在本地持续复用，便于同一 thread 反复补文献、补实验、补 references，而不是每次都从零开始

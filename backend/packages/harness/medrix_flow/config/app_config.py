@@ -25,6 +25,24 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+class ResearchConfig(BaseModel):
+    """Research pipeline defaults."""
+
+    manuscript_model: str | None = Field(
+        default=None,
+        description="Optional model name for manuscript section generation; None inherits the current thread model.",
+    )
+    default_auto_gates: list[str] = Field(
+        default_factory=list,
+        description="Human gate types that research_assistant may auto-approve for run_pipeline by default.",
+    )
+    default_max_stages: int = Field(
+        default=5,
+        ge=1,
+        description="Default maximum number of lifecycle stages advanced by one run_pipeline tool call.",
+    )
+
+
 class AppConfig(BaseModel):
     """Config for the MedrixFlow application"""
 
@@ -36,6 +54,7 @@ class AppConfig(BaseModel):
     extensions: ExtensionsConfig = Field(default_factory=ExtensionsConfig, description="Extensions configuration (MCP servers and skills state)")
     tool_search: ToolSearchConfig = Field(default_factory=ToolSearchConfig, description="Tool search / deferred loading configuration")
     checkpointer: CheckpointerConfig | None = Field(default=None, description="Checkpointer configuration")
+    research: ResearchConfig = Field(default_factory=ResearchConfig, description="Research pipeline defaults")
     model_config = ConfigDict(extra="allow", frozen=False)
 
     @field_validator("models", "tools", "tool_groups", mode="before")

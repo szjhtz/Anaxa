@@ -11,7 +11,13 @@ from medrix_flow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from medrix_flow.runtime.utils import now_iso
 
 from .adapters import AcademicSourceAdapter, build_default_adapters
-from .formatters import format_apa7_reference, format_bibtex_entry
+from .formatters import (
+    DEFAULT_REFERENCE_STYLE,
+    format_bibtex_entry,
+    format_reference,
+    normalize_reference_style,
+    reference_style_label,
+)
 from .quality import (
     canonical_reason,
     hydrate_quality_metadata,
@@ -152,7 +158,7 @@ class AcademicResearchService:
         scored = score_papers(list(merged.values()), terms=terms, quality_mode=resolved_quality_mode)
         stored = await self._repository.upsert_papers(project.project_id, scored)
         selected = select_core_papers(stored, limit=max(20, min(core_paper_limit, 40)))
-        references = self._build_references(stored)
+        references = self._build_references(stored, style=self._resolve_reference_style(project))
 
         await self._repository.update_project_status(
             project.project_id,
@@ -192,17 +198,19 @@ class AcademicResearchService:
         *,
         output_dir: Path | None = None,
         include_graph: bool = False,
+        reference_style: str | None = None,
     ) -> SynthesisResult:
         project = await self._require_project(project_id)
         papers = await self._repository.list_project_papers(project.project_id)
         if not papers:
             raise ValueError(f"Project {project_id} has no papers. Run ingest first.")
 
+        resolved_reference_style = self._resolve_reference_style(project, reference_style)
         core_papers = self._core_papers_for_synthesis(project, papers)
         outline = self._build_outline(project, core_papers)
         evidence_cards = self._build_evidence_cards(project, core_papers, outline)
         edges = self._build_graph_edges(project, core_papers, evidence_cards, outline)
-        references = self._build_references(papers)
+        references = self._build_references(papers, style=resolved_reference_style)
         graph = await self._persist_graph_bundle(project, outline, evidence_cards, edges)
 
         export_paths: list[Path] = []
@@ -215,6 +223,7 @@ class AcademicResearchService:
                 outline=outline,
                 evidence_cards=evidence_cards,
                 references=references,
+                reference_style=resolved_reference_style,
                 graph=graph if include_graph else None,
             )
             virtual_exports = [self._to_virtual_output(project.thread_id, path) for path in export_paths]
@@ -229,6 +238,7 @@ class AcademicResearchService:
                         summary={
                             "project_id": project.project_id,
                             "reference_count": len([entry for entry in references if entry.included_in_final]),
+                            "reference_style": resolved_reference_style,
                             "evidence_count": len(evidence_cards),
                             "reference_mix": provider_breakdown(papers),
                             "preprint_ratio": preprint_ratio(papers),
@@ -246,6 +256,7 @@ class AcademicResearchService:
                 "outline_count": len(outline),
                 "evidence_count": len(evidence_cards),
                 "reference_count": len([entry for entry in references if entry.included_in_final]),
+                "reference_style": resolved_reference_style,
                 "last_synthesized_at": now_iso(),
             },
         )
@@ -272,8 +283,15 @@ class AcademicResearchService:
         source_profile: str | None = None,
         quality_mode: str | None = None,
         preprint_policy: str | None = None,
+        reference_style: str | None = None,
     ) -> SynthesisResult:
-        project = await self.create_project(thread_id=thread_id, topic=topic, scope=scope)
+        normalized_reference_style = normalize_reference_style(reference_style)
+        project = await self.create_project(
+            thread_id=thread_id,
+            topic=topic,
+            scope=scope,
+            metadata={"reference_style": normalized_reference_style},
+        )
         await self.ingest_project(
             project.project_id,
             max_candidates=max_candidates,
@@ -286,6 +304,7 @@ class AcademicResearchService:
             project.project_id,
             output_dir=output_dir,
             include_graph=include_graph,
+            reference_style=normalized_reference_style,
         )
 
     async def get_project_summary(self, project_id: str) -> dict[str, Any]:
@@ -294,7 +313,8 @@ class AcademicResearchService:
         outline = await self._repository.list_outline_nodes(project.project_id)
         evidence = await self._repository.list_evidence_cards(project.project_id)
         exports = await self._repository.list_report_exports(project.project_id)
-        references = self._build_references(papers)
+        reference_style = self._resolve_reference_style(project)
+        references = self._build_references(papers, style=reference_style)
         return {
             "project": project.model_dump(),
             "paper_count": len(papers),
@@ -306,12 +326,14 @@ class AcademicResearchService:
             "venue_breakdown": venue_breakdown(papers),
             "preprint_ratio": preprint_ratio(papers),
             "canonical_reference_count": len([entry for entry in references if entry.included_in_final]),
+            "reference_style": reference_style,
+            "reference_style_label": reference_style_label(reference_style),
         }
 
-    async def get_references(self, project_id: str) -> list[ReferenceEntry]:
+    async def get_references(self, project_id: str, *, style: str | None = None) -> list[ReferenceEntry]:
         project = await self._require_project(project_id)
         papers = await self._repository.list_project_papers(project.project_id)
-        return self._build_references(papers)
+        return self._build_references(papers, style=self._resolve_reference_style(project, style))
 
     async def get_graph(self, project_id: str) -> AcademicGraph:
         await self._require_project(project_id)
@@ -682,8 +704,9 @@ class AcademicResearchService:
                 )
         return edges
 
-    def _build_references(self, papers: list[PaperRecord]) -> list[ReferenceEntry]:
-        references = [format_apa7_reference(paper) for paper in papers]
+    def _build_references(self, papers: list[PaperRecord], *, style: str | None = None) -> list[ReferenceEntry]:
+        resolved_style = normalize_reference_style(style)
+        references = [format_reference(paper, resolved_style) for paper in papers]
         seen: set[str] = set()
         deduped: list[ReferenceEntry] = []
         for entry in references:
@@ -704,6 +727,7 @@ class AcademicResearchService:
         outline: list[OutlineNodeRecord],
         evidence_cards: list[EvidenceCardRecord],
         references: list[ReferenceEntry],
+        reference_style: str,
         graph: AcademicGraph | None,
     ) -> list[Path]:
         export_dir = output_dir / "academic-research" / f"{slugify(project.topic)}-{project.project_id[:8]}"
@@ -719,11 +743,11 @@ class AcademicResearchService:
         evidence_map = self._build_evidence_map(project, outline, evidence_cards, core_papers)
         retrieval_audit = self._collection_audit(all_papers, references)
         report_path.write_text(
-            self._render_report(project, outline, evidence_cards, core_papers, references),
+            self._render_report(project, outline, evidence_cards, core_papers, references, reference_style),
             encoding="utf-8",
         )
         references_path.write_text(
-            self._render_references(project, references),
+            self._render_references(project, references, reference_style),
             encoding="utf-8",
         )
         bibtex_path.write_text(
@@ -753,6 +777,7 @@ class AcademicResearchService:
         evidence_cards: list[EvidenceCardRecord],
         papers: list[PaperRecord],
         references: list[ReferenceEntry],
+        reference_style: str,
     ) -> str:
         paper_lookup = {paper.paper_id: paper for paper in papers}
         cards_by_outline: dict[str, list[EvidenceCardRecord]] = {}
@@ -768,6 +793,7 @@ class AcademicResearchService:
             f"- Domain: {project.domain}",
             f"- Generated: {today_stamp()}",
             f"- Core Evidence Set: {len(papers)} papers used for synthesis",
+            f"- Reference Style: {reference_style_label(reference_style)}",
             "",
             "## Executive Summary",
             "",
@@ -815,12 +841,26 @@ class AcademicResearchService:
         )
         return "\n".join(lines).strip() + "\n"
 
-    def _render_references(self, project: ResearchProject, references: list[ReferenceEntry]) -> str:
-        lines = [f"# References for {project.topic}", "", "Style: APA 7", ""]
+    def _render_references(
+        self,
+        project: ResearchProject,
+        references: list[ReferenceEntry],
+        reference_style: str,
+    ) -> str:
+        lines = [f"# References for {project.topic}", "", f"Style: {reference_style_label(reference_style)}", ""]
         for entry in references:
             if entry.included_in_final:
                 lines.append(f"- {entry.formatted_text}")
         return "\n".join(lines).strip() + "\n"
+
+    @staticmethod
+    def _resolve_reference_style(project: ResearchProject, requested_style: str | None = None) -> str:
+        if requested_style:
+            return normalize_reference_style(requested_style)
+        metadata_style = (project.metadata or {}).get("reference_style")
+        if isinstance(metadata_style, str) and metadata_style:
+            return normalize_reference_style(metadata_style)
+        return DEFAULT_REFERENCE_STYLE
 
     def _build_evidence_map(
         self,

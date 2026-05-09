@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.deps import get_academic_service
+from medrix_flow.academic import normalize_reference_style, reference_style_label
 
 router = APIRouter(prefix="/api/academic", tags=["academic"])
 
@@ -30,6 +31,7 @@ class AcademicIngestRequest(BaseModel):
 class AcademicSynthesizeRequest(BaseModel):
     include_graph: bool = False
     write_outputs: bool = True
+    reference_style: str | None = None
 
 
 @router.post("/projects")
@@ -75,9 +77,12 @@ async def synthesize_project(project_id: str, body: AcademicSynthesizeRequest, r
             project_id,
             output_dir=output_dir,
             include_graph=body.include_graph,
+            reference_style=body.reference_style,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        detail = str(exc)
+        status = 422 if detail.startswith("Unsupported reference style") else 404
+        raise HTTPException(status_code=status, detail=detail) from exc
     return result.model_dump()
 
 
@@ -94,16 +99,21 @@ async def get_project(project_id: str, request: Request) -> dict[str, Any]:
 async def get_references(
     project_id: str,
     request: Request,
-    style: str = Query(default="apa7"),
+    style: str | None = Query(default=None),
 ) -> dict[str, Any]:
-    if style.lower() != "apa7":
-        raise HTTPException(status_code=422, detail="Only apa7 is currently supported")
     service = get_academic_service(request)
     try:
-        references = await service.get_references(project_id)
+        normalized_style = normalize_reference_style(style)
+        references = await service.get_references(project_id, style=normalized_style)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"style": "apa7", "data": [entry.model_dump() for entry in references]}
+        detail = str(exc)
+        status = 422 if detail.startswith("Unsupported reference style") else 404
+        raise HTTPException(status_code=status, detail=detail) from exc
+    return {
+        "style": normalized_style,
+        "style_label": reference_style_label(normalized_style),
+        "data": [entry.model_dump() for entry in references],
+    }
 
 
 @router.get("/projects/{project_id}/graph")

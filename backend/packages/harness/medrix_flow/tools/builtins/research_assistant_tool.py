@@ -8,8 +8,18 @@ from langgraph.types import Command
 from langgraph.typing import ContextT
 
 from medrix_flow.agents.thread_state import ThreadState
+from medrix_flow.config import get_app_config
 from medrix_flow.config.paths import get_paths
-from medrix_flow.research import RESEARCH_STAGES, ResearchQuestService, ResearchRepository, ResearchStage
+from medrix_flow.models import create_chat_model
+from medrix_flow.research import (
+    RESEARCH_STAGES,
+    ResearchQuestOrchestrator,
+    ResearchQuestService,
+    ResearchQuestSnapshot,
+    ResearchRepository,
+    ResearchStage,
+)
+from medrix_flow.research.orchestrator import ContentGenerator
 from medrix_flow.runtime.db import SQLiteRuntimeDB
 
 
@@ -19,6 +29,76 @@ def _as_stage(value: str | None) -> ResearchStage | None:
     if value not in RESEARCH_STAGES:
         raise ValueError(f"Unknown research stage {value!r}. Expected one of: {', '.join(RESEARCH_STAGES)}")
     return cast(ResearchStage, value)
+
+
+def _message_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return str(content)
+
+
+def _manuscript_prompt_for(section_key: str, snapshot: ResearchQuestSnapshot) -> str:
+    evidence = [
+        {
+            "claim": item.claim,
+            "support_status": item.support_status,
+            "source_title": item.source_title,
+            "locator": item.locator,
+        }
+        for item in snapshot.evidence[:20]
+    ]
+    branches = [
+        {
+            "name": branch.name,
+            "branch_type": branch.branch_type,
+            "status": branch.status,
+            "metrics": branch.metrics,
+            "failure_summary": branch.failure_summary,
+        }
+        for branch in snapshot.experiment_branches[:10]
+    ]
+    return (
+        "Draft one concise manuscript section for a research quest.\n"
+        "Use LaTeX-friendly prose. Do not invent citations or unsupported claims.\n"
+        f"Section key: {section_key}\n"
+        f"Title: {snapshot.quest.title}\n"
+        f"Topic: {snapshot.quest.topic}\n"
+        f"Objective: {snapshot.quest.objective or 'not specified'}\n"
+        f"Evidence records: {evidence}\n"
+        f"Experiment branches: {branches}\n"
+    )
+
+
+def _build_content_generator(model_name: str | None) -> ContentGenerator:
+    async def generate(section_key: str, snapshot: ResearchQuestSnapshot) -> str:
+        llm = create_chat_model(model_name, thinking_enabled=False)
+        response = await llm.ainvoke(_manuscript_prompt_for(section_key, snapshot))
+        return _message_content_to_text(response.content).strip()
+
+    return generate
+
+
+def _resolve_thread_model_name(runtime: ToolRuntime[ContextT, ThreadState]) -> str | None:
+    model_name = runtime.context.get("model_name")
+    if isinstance(model_name, str) and model_name:
+        return model_name
+    runtime_config = getattr(runtime, "config", None)
+    configurable = runtime_config.get("configurable") if isinstance(runtime_config, dict) else None
+    if isinstance(configurable, dict):
+        configured_model = configurable.get("model_name")
+        if isinstance(configured_model, str) and configured_model:
+            return configured_model
+    return None
 
 
 @tool("research_assistant", parse_docstring=True)
@@ -37,6 +117,8 @@ async def research_assistant_tool(
     gate_type: str | None = None,
     gate_status: str = "approved",
     gate_reason: str | None = None,
+    auto_gates: list[str] | None = None,
+    max_stages: int | None = None,
 ) -> Command:
     """Start, inspect, or advance a staged research quest.
 
@@ -47,7 +129,7 @@ async def research_assistant_tool(
     literature retrieval and `experiment_lab` for actual dataset execution.
 
     Args:
-        action: One of `start`, `status`, `advance`, or `gate`.
+        action: One of `start`, `status`, `advance`, `gate`, or `run_pipeline`.
         topic: Research topic. Required when starting a quest.
         quest_id: Existing research quest id. If omitted for status/advance,
             the latest quest for the current thread is used.
@@ -61,6 +143,8 @@ async def research_assistant_tool(
         gate_type: Gate type such as `experiment_execution`, `pre_review`, or `final_release`.
         gate_status: Gate status for action `gate`; defaults to `approved`.
         gate_reason: Optional human reason or note for the gate decision.
+        auto_gates: Optional gate types to auto-approve for `run_pipeline`; defaults to config.
+        max_stages: Optional max lifecycle stages to advance for `run_pipeline`; defaults to config.
     """
     thread_id = runtime.context.get("thread_id")
     if not thread_id:
@@ -72,9 +156,10 @@ async def research_assistant_tool(
         repository = ResearchRepository(db)
         await repository.setup()
         service = ResearchQuestService(repository)
+        orchestrator = ResearchQuestOrchestrator(service)
 
         resolved_quest_id = quest_id
-        if not resolved_quest_id and action in {"status", "advance", "gate"}:
+        if not resolved_quest_id and action in {"status", "advance", "gate", "run_pipeline"}:
             quests = await service.list_quests(str(thread_id))
             resolved_quest_id = quests[0].quest_id if quests else None
 
@@ -118,6 +203,34 @@ async def research_assistant_tool(
                 )
             else:
                 message = f"Research quest `{result.quest.quest_id}` advanced to `{result.quest.stage}`."
+        elif action == "run_pipeline":
+            if not resolved_quest_id:
+                if not topic:
+                    raise ValueError("quest_id is required for run_pipeline when no topic is supplied")
+                quest = await service.create_quest(
+                    thread_id=str(thread_id),
+                    topic=topic,
+                    scope=scope,
+                    objective=objective,
+                    metadata={"created_by": "research_assistant", "pipeline": "run_pipeline"},
+                )
+                resolved_quest_id = quest.quest_id
+            config = get_app_config()
+            model_name = config.research.manuscript_model or _resolve_thread_model_name(runtime)
+            result = await orchestrator.run_pipeline(
+                resolved_quest_id,
+                auto_gates=auto_gates if auto_gates is not None else config.research.default_auto_gates,
+                max_stages=max_stages if max_stages is not None else config.research.default_max_stages,
+                content_generator=_build_content_generator(model_name),
+            )
+            message = (
+                f"Research pipeline `{result.quest_id}` returned `{result.status}` at stage `{result.final_stage}`. "
+                f"Stages executed: {len(result.stages_executed)}."
+            )
+            if result.blocked_gate:
+                message += f" Blocked gate: `{result.blocked_gate}`."
+            if result.error:
+                message += f" Error: {result.error}"
         elif action == "gate":
             if not resolved_quest_id:
                 raise ValueError("quest_id is required and no quest exists for this thread")
@@ -132,7 +245,7 @@ async def research_assistant_tool(
             )
             message = f"Research gate `{gate.gate_type}` for `{gate.stage}` is now `{gate.status}`."
         else:
-            raise ValueError("action must be one of: start, status, advance, gate")
+            raise ValueError("action must be one of: start, status, advance, gate, run_pipeline")
     except Exception as exc:
         await db.close()
         return Command(update={"messages": [ToolMessage(f"Error: {exc}", tool_call_id=tool_call_id)]})

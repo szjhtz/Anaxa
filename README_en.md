@@ -12,23 +12,23 @@
 
 <p align="center">
   <b>An AI Research Agent Platform for Academic Writing and Experiment Reports</b><br/>
-  Literature Retrieval · APA 7 References · Experimental Evidence · Multi-Agent Collaboration
+  Literature Retrieval · Multi-Style References · Experimental Evidence · Multi-Agent Collaboration
 </p>
 
 ---
 
-MedrixFlow is a full-stack AI agent orchestration platform for academic writing, literature reviews, experiment reports, and research delivery. The backend uses LangGraph for multi-agent collaboration and state management, while the frontend provides a thread-based chat and artifact workflow built on Next.js 16. Beyond general-purpose agent capabilities, MedrixFlow now includes structured academic retrieval, APA 7 reference export, CS/AI and bioinformatics experiment specialist agents, local evidence storage, and report-oriented artifact delivery, with research, literature, and experiment intent routed automatically from normal chat. It is designed to solve the usual gaps in academic workflows: weak scholarly grounding, poor references, and disconnected experiment outputs.
+MedrixFlow is a full-stack AI agent orchestration platform for academic writing, literature reviews, experiment reports, and research delivery. The backend uses LangGraph for multi-agent collaboration and state management, while the frontend provides a thread-based chat and artifact workflow built on Next.js 16. Beyond general-purpose agent capabilities, MedrixFlow now includes structured academic retrieval, multi-style reference export, CS/AI and bioinformatics experiment specialist agents, local evidence storage, and report-oriented artifact delivery, with research, literature, and experiment intent routed automatically from normal chat. It is designed to solve the usual gaps in academic workflows: weak scholarly grounding, poor references, and disconnected experiment outputs.
 
 ## Key Features
 
-### 1. Academic Research Pipeline: From Topic to APA 7 References
+### 1. Academic Research Pipeline: From Topic to User-Selected References
 
 MedrixFlow now includes backend-routed research capabilities for formal academic reporting:
 
 - **Built-in academic subagent**: `academic-researcher` handles topic decomposition, query expansion, candidate paper screening, evidence card generation, outline building, and reference export
 - **Chat-native research routing**: prompts about literature, papers, citations, APA/BibTeX, evidence maps, or related work are routed toward `academic_research`, with complex deliverables delegated to `academic-researcher` when appropriate
 - **Formal-source-first CS/AI stack**: the default `cs_ai` path uses `DBLP`, `OpenReview`, `ACL Anthology`, `Semantic Scholar`, `OpenAlex`, `Crossref`, and `arXiv`, with conference/journal versions preferred as the canonical reference
-- **Formal report exports**: a single research project can produce `report.md`, `references.md`, `references.bib`, `evidence_map.json`, `retrieval_audit.json`, and optionally `graph.json`
+- **Formal report exports**: a single research project can produce `report.md`, `references.md` formatted in the user's requested style, `references.bib`, `evidence_map.json`, `retrieval_audit.json`, and optionally `graph.json`
 - **Local evidence persistence**: research projects, paper metadata, evidence cards, outline mappings, and formatted references are stored locally in SQLite for incremental reuse
 
 ### 2. Experiment Specialist Agents: CS/AI and Bioinformatics
@@ -201,7 +201,7 @@ The platform also keeps strong delivery quality and operational visibility:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| Academic Research | `academic_research` | Structured literature retrieval, metadata normalization, paper deduplication, evidence-card persistence, and APA reference export |
+| Academic Research | `academic_research` | Structured literature retrieval, metadata normalization, paper deduplication, evidence-card persistence, and user-selected reference export |
 | Research Orchestration | `research_assistant` | Backend staged research quests, novelty checks, evidence gates, experiment planning, reviewer loops, and final bundle management |
 | Experiment Execution | `experiment_lab` | Python-first experiment pipeline, scientific figure routing, and result bundle export |
 | Sandbox | bash, ls, read_file, write_file, str_replace | Thread-isolated filesystem operations |
@@ -216,8 +216,8 @@ The platform also keeps strong delivery quality and operational visibility:
 |-------|-------------|
 | `POST /api/academic/projects` | Create or reuse an academic project bound to a `thread_id` and topic |
 | `POST /api/academic/projects/{project_id}/ingest` | Retrieve papers from multiple sources, normalize metadata, deduplicate, and build the evidence pool |
-| `POST /api/academic/projects/{project_id}/synthesize` | Generate the formal report, APA references, BibTeX, and evidence mapping files |
-| `GET /api/academic/projects/{project_id}/references?style=apa7` | Read the APA 7 reference set |
+| `POST /api/academic/projects/{project_id}/synthesize` | Generate the formal report, requested-style references, BibTeX, and evidence mapping files; `reference_style` defaults to APA 7 only when omitted |
+| `GET /api/academic/projects/{project_id}/references?style=gbt7714` | Read references in the requested style; supports `apa7`, `mla9`, `chicago`, `gbt7714`, `plain`, and `bibtex` |
 | `POST /api/research/quests` | Create a staged research quest from backend flows or the direct Research Dashboard |
 | `POST /api/research/quests/{quest_id}/advance` | Advance intake, literature, novelty, evidence, experiment, manuscript, review, and final bundle stages |
 | `POST /api/research/quests/{quest_id}/gate` | Record human gate decisions for experiment execution, pre-review, and final release |
@@ -228,7 +228,7 @@ The platform also keeps strong delivery quality and operational visibility:
 ## Academic Writing Additions
 
 - **Literature review / related work**: given a topic, MedrixFlow can use `academic-researcher` with `academic-deep-research` to expand queries, search multiple academic sources, deduplicate, and build a core paper pool with evidence mappings
-- **APA 7 references**: formal report workflows export all verified canonical references for the current project without an export cap, along with `references.md`, `references.bib`, and `retrieval_audit.json`
+- **Multi-style references**: formal report workflows export all verified canonical references in the user's requested style without an export cap, along with `references.md`, `references.bib`, and `retrieval_audit.json`; APA 7 remains the compatibility default when no style is specified
 - **Experiment-backed writing**: `cs-ai-lab` and `bioinformatics-lab` can turn structured datasets or expression analyses into figures, tables, methods, and results bundles, reducing the gap between prose and evidence
 - **Controlled iterative experiments**: inspired by the autoresearch-style pattern, model training and ablation work emphasizes baselines, fixed metrics, fixed evaluation budgets, and `keep` / `discard` / `crash` logs instead of unconstrained code changes
 - **Local evidence reuse**: academic and experiment projects can be incrementally reused in the same thread, so follow-up literature, references, and experiments do not have to start from scratch

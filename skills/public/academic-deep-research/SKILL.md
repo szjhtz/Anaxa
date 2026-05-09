@@ -1,6 +1,6 @@
 ---
 name: academic-deep-research
-description: Use this skill for academic reports, literature reviews, experiment reports, APA references, innovation-point mining, or when the user wants a topic turned into a paper-backed evidence bundle instead of generic web research.
+description: Use this skill for academic reports, literature reviews, experiment reports, user-selected reference styles, innovation-point mining, or when the user wants a topic turned into a paper-backed evidence bundle instead of generic web research.
 ---
 
 # Academic Deep Research
@@ -9,7 +9,7 @@ Use this skill when the user asks for:
 
 - academic reports or literature reviews
 - experiment reports with professional references
-- APA-style references or richer scholarly citations
+- references in a specific user-requested style or richer scholarly citations
 - innovation-point mining based on papers
 - a research knowledge base, evidence map, or local literature store
 
@@ -20,9 +20,10 @@ Use this skill when the user asks for:
 3. Do not invent references, DOI metadata, or claims that are not grounded in the generated evidence bundle.
 4. Treat the generated `report.md`, `references.md`, `references.bib`, and `evidence_map.json` as the source of truth.
 5. When writing final prose in chat, use the artifact bundle first and only then polish wording.
-6. For manuscript-style requests, default to LaTeX + PDF and prefer `manuscript_export` so writing, citation audit, PDF compilation, and artifact presentation happen in one enforced step.
-7. Read or audit `references.bib` before inserting inline LaTeX citations. Use exact BibTeX keys only; do not use `\nocite{*}` unless the user explicitly asks to list every reference without inline citation placement.
-8. If citation or PDF generation fails, report the exact failed tool and error. Do not claim tools are unavailable when file tools, `manuscript_export`, `citation_audit`, or `present_files` are available.
+6. Follow the user's requested reference style. Use APA 7 only when no style is specified.
+7. For manuscript-style requests, default to LaTeX + PDF and prefer `manuscript_export` so writing, citation audit, PDF compilation, and artifact presentation happen in one enforced step.
+8. Read or audit `references.bib` before inserting inline LaTeX citations. Use exact BibTeX keys only; do not use `\nocite{*}` unless the user explicitly asks to list every reference without inline citation placement.
+9. If citation or PDF generation fails, report the exact failed tool and error. Do not claim tools are unavailable when file tools, `manuscript_export`, `citation_audit`, or `present_files` are available.
 
 ## Recommended Workflow
 
@@ -62,7 +63,7 @@ The subagent should use `academic_research` as its primary tool and then summari
 When summarizing the generated academic bundle:
 
 - mention `project_id`
-- mention how many core papers and APA references were retained
+- mention how many core papers and formatted references were retained
 - mention citation audit status for manuscript outputs
 - mention any evidence gaps
 - point the user to the artifacts instead of rewriting everything inline
@@ -71,5 +72,5 @@ When summarizing the generated academic bundle:
 
 - the report is evidence-backed rather than generic
 - the references list is materially richer than a normal web-search answer
-- APA entries are normalized and deduplicated
+- reference entries are normalized, deduplicated, and formatted in the requested style
 - innovation directions are tied to literature gaps, not speculation

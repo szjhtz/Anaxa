@@ -18,7 +18,8 @@ ResearchStage = Literal[
     "final_bundle",
 ]
 
-ResearchQuestStatus = Literal["active", "blocked", "completed", "error"]
+ResearchQuestStatus = Literal["active", "blocked", "completed", "error", "cancelled"]
+PipelineStatus = Literal["completed", "blocked_on_gate", "stopped_at_max_stages", "error", "cancelled"]
 GateStatus = Literal["pending", "approved", "rejected"]
 SupportStatus = Literal["supported", "unsupported", "contradicted", "uncertain"]
 OverlapRisk = Literal["low", "medium", "high"]
@@ -44,6 +45,25 @@ GATED_TRANSITIONS: dict[ResearchStage, str] = {
     "review": "pre_review",
     "final_bundle": "final_release",
 }
+
+
+class PipelineStageEvent(BaseModel):
+    stage: ResearchStage
+    entered_at: str
+    completed_at: str | None = None
+    outputs: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class PipelineRunResult(BaseModel):
+    quest_id: str
+    status: PipelineStatus
+    stages_executed: list[PipelineStageEvent] = Field(default_factory=list)
+    final_stage: ResearchStage
+    blocked_gate: str | None = None
+    error: str | None = None
+    message: str
 
 
 class ResearchQuest(BaseModel):

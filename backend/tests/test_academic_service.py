@@ -250,3 +250,54 @@ def test_academic_service_prefers_published_versions_and_exports_all_verified_re
         await db.close()
 
     asyncio.run(scenario())
+
+
+def test_academic_service_writes_requested_reference_style(tmp_path, monkeypatch):
+    async def scenario() -> None:
+        monkeypatch.setenv("MEDRIX_FLOW_HOME", str(tmp_path))
+        paths_module._paths = None
+
+        db = SQLiteRuntimeDB(":memory:")
+        await db.connect()
+        repo = AcademicRepository(db)
+        await repo.setup()
+        service = AcademicResearchService(
+            repo,
+            adapters=[
+                FakeAdapter(
+                    "openalex",
+                    [
+                        _paper(
+                            provider="openalex",
+                            provider_id="w-style",
+                            title="Reference style selection for academic agents",
+                            year=2026,
+                            venue="Journal of Research Tooling",
+                            doi="10.7000/style",
+                            abstract="A benchmark study on reference style selection.",
+                        )
+                    ],
+                )
+            ],
+        )
+
+        result = await service.run_research(
+            thread_id="thread-style",
+            topic="reference style selection",
+            output_dir=tmp_path / "outputs",
+            max_candidates=20,
+            core_paper_limit=20,
+            reference_style="mla",
+        )
+        references_path = next(Path(path) for path in result.export_files if path.endswith("references.md"))
+        references_text = references_path.read_text(encoding="utf-8")
+        summary = await service.get_project_summary(result.project.project_id)
+
+        assert result.references
+        assert {entry.style for entry in result.references} == {"mla9"}
+        assert "Style: MLA 9" in references_text
+        assert summary["reference_style"] == "mla9"
+
+        await db.close()
+
+    asyncio.run(scenario())

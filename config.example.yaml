@@ -16,7 +16,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 4
+config_version: 5
 
 # ============================================================================
 # Models Configuration
@@ -274,6 +274,18 @@ tools:
 
 tool_search:
   enabled: false
+
+# ============================================================================
+# Research Pipeline Configuration
+# ============================================================================
+# Defaults for the research_assistant action="run_pipeline" one-shot lifecycle
+# runner. Empty auto_gates means human approval is required at every gate unless
+# the tool call explicitly passes auto_gates.
+
+research:
+  manuscript_model: null
+  default_auto_gates: []
+  default_max_stages: 5
 
 # ============================================================================
 # Sandbox Configuration

@@ -147,7 +147,7 @@ class TestLiveMultiToolChain:
             print(f"  [{e.type}] {e.data}")
 
         tc_events = [e for e in events if e.type == "messages-tuple" and e.data.get("type") == "ai" and "tool_calls" in e.data]
-        tool_names = [tc.data["tool_calls"][0]["name"] for tc in tc_events]
+        tool_names = [call["name"] for tc in tc_events for call in tc.data["tool_calls"]]
 
         assert "write_file" in tool_names, f"Expected write_file, got: {tool_names}"
         assert "read_file" in tool_names, f"Expected read_file, got: {tool_names}"

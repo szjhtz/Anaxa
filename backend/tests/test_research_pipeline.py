@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+import asyncio
+import json
+
+from medrix_flow.research import PipelineRunResult, PipelineStageEvent, ResearchQuestOrchestrator, ResearchQuestService
+from medrix_flow.research.repository import ResearchRepository
+from medrix_flow.runtime.db import SQLiteRuntimeDB
+from medrix_flow.runtime.utils import now_iso
+
+
+async def _make_pipeline() -> tuple[ResearchQuestOrchestrator, ResearchQuestService, ResearchRepository, SQLiteRuntimeDB]:
+    db = SQLiteRuntimeDB(":memory:")
+    await db.connect()
+    repo = ResearchRepository(db)
+    await repo.setup()
+    service = ResearchQuestService(repo)
+    return ResearchQuestOrchestrator(service), service, repo, db
+
+
+def test_pipeline_run_result_serializes_and_defaults_are_isolated():
+    first_event = PipelineStageEvent(stage="literature", entered_at="2026-05-10T00:00:00Z")
+    second_event = PipelineStageEvent(stage="review", entered_at="2026-05-10T00:00:01Z")
+    first_event.outputs["claim_count"] = 3
+    first_event.artifacts.append("/mnt/user-data/outputs/literature.json")
+
+    assert second_event.outputs == {}
+    assert second_event.artifacts == []
+
+    result = PipelineRunResult(
+        quest_id="rq-test",
+        status="stopped_at_max_stages",
+        stages_executed=[first_event, second_event],
+        final_stage="review",
+        message="Pipeline stopped after 2 stages.",
+    )
+
+    payload = json.loads(result.model_dump_json())
+    assert payload["quest_id"] == "rq-test"
+    assert payload["status"] == "stopped_at_max_stages"
+    assert payload["final_stage"] == "review"
+    assert payload["stages_executed"][0]["outputs"]["claim_count"] == 3
+    assert payload["blocked_gate"] is None
+
+
+def test_research_pipeline_happy_path_auto_approves_gates():
+    async def scenario() -> None:
+        orchestrator, service, _repo, db = await _make_pipeline()
+        quest = await service.create_quest(thread_id="thread-pipeline-1", topic="citation integrity for agents")
+
+        async def content_generator(section_key, snapshot):
+            return f"Generated {section_key} for {snapshot.quest.topic}."
+
+        async def reviewer_generator(profile, snapshot):
+            return {"profile": profile, "quest_id": snapshot.quest.quest_id}
+
+        result = await orchestrator.run_pipeline(
+            quest.quest_id,
+            auto_gates=["experiment_execution", "pre_review", "final_release"],
+            content_generator=content_generator,
+            reviewer_generator=reviewer_generator,
+        )
+
+        assert result.status == "completed"
+        assert result.final_stage == "final_bundle"
+        assert [event.stage for event in result.stages_executed][-1] == "final_bundle"
+        assert {event.stage for event in result.stages_executed} >= {
+            "literature",
+            "novelty_check",
+            "experiment_planned",
+            "manuscript_draft",
+            "review",
+        }
+        snapshot = await service.get_snapshot(quest.quest_id)
+        assert snapshot.quest.status == "completed"
+        assert {gate.gate_type: gate.status for gate in snapshot.gates} == {
+            "experiment_execution": "approved",
+            "pre_review": "approved",
+            "final_release": "approved",
+        }
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_research_pipeline_stops_at_max_stages():
+    async def scenario() -> None:
+        orchestrator, service, _repo, db = await _make_pipeline()
+        quest = await service.create_quest(thread_id="thread-pipeline-2", topic="evidence workflows")
+
+        result = await orchestrator.run_pipeline(quest.quest_id, max_stages=3)
+
+        assert result.status == "stopped_at_max_stages"
+        assert len(result.stages_executed) == 3
+        assert result.final_stage == "evidence_verified"
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_research_pipeline_blocks_on_non_auto_gate():
+    async def scenario() -> None:
+        orchestrator, service, _repo, db = await _make_pipeline()
+        quest = await service.create_quest(thread_id="thread-pipeline-3", topic="agent experiment gates")
+
+        result = await orchestrator.run_pipeline(quest.quest_id, max_stages=5)
+
+        assert result.status == "blocked_on_gate"
+        assert result.blocked_gate == "experiment_execution"
+        assert result.final_stage == "experiment_planned"
+        assert [event.stage for event in result.stages_executed][-1] == "experiment_planned"
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_research_pipeline_returns_cancelled_status():
+    async def scenario() -> None:
+        orchestrator, service, repo, db = await _make_pipeline()
+        quest = await service.create_quest(thread_id="thread-pipeline-4", topic="cancelled quest")
+        quest.status = "cancelled"
+        quest.updated_at = now_iso()
+        await repo.update_quest(quest)
+
+        result = await orchestrator.run_pipeline(quest.quest_id)
+
+        assert result.status == "cancelled"
+        assert result.stages_executed == []
+        assert result.final_stage == "intake"
+        await db.close()
+
+    asyncio.run(scenario())

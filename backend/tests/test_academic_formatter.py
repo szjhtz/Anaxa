@@ -1,4 +1,12 @@
-from medrix_flow.academic.formatters import format_apa7_reference, format_bibtex_entry
+import pytest
+
+from medrix_flow.academic.formatters import (
+    format_apa7_reference,
+    format_bibtex_entry,
+    format_reference,
+    normalize_reference_style,
+    reference_style_label,
+)
 from medrix_flow.academic.quality import hydrate_quality_metadata
 from medrix_flow.academic.types import PaperAuthor, PaperRecord
 from medrix_flow.runtime.utils import now_iso
@@ -96,3 +104,46 @@ def test_format_bibtex_entry_emits_expected_fields():
     assert "title = {benchmarking multimodal retrieval}" in bibtex.lower()
     assert "author = {Ng, Carol}" in bibtex
     assert "doi = {10.2000/demo}" in bibtex
+
+
+def test_reference_style_aliases_and_labels_are_normalized():
+    assert normalize_reference_style("APA") == "apa7"
+    assert normalize_reference_style("GB/T 7714") == "gbt7714"
+    assert normalize_reference_style("mla") == "mla9"
+    assert reference_style_label("gbt7714") == "GB/T 7714"
+
+    with pytest.raises(ValueError, match="Unsupported reference style"):
+        normalize_reference_style("made-up-style")
+
+
+def test_format_reference_honors_non_apa_style():
+    paper = _paper(
+        title="benchmarking multimodal retrieval",
+        authors=[PaperAuthor(display_name="Carol Ng", given_name="Carol", family_name="Ng", ordinal=0)],
+        year=2024,
+        venue="Proceedings of Example Conference",
+        doi="10.2000/demo",
+    )
+
+    entry = format_reference(paper, "GB/T 7714")
+
+    assert entry.style == "gbt7714"
+    assert "benchmarking multimodal retrieval[C]" in entry.formatted_text
+    assert "Proceedings of Example Conference, 2024." in entry.formatted_text
+    assert entry.formatted_text.endswith("https://doi.org/10.2000/demo")
+
+
+def test_format_reference_can_emit_bibtex_as_reference_entry():
+    paper = _paper(
+        title="benchmarking multimodal retrieval",
+        authors=[PaperAuthor(display_name="Carol Ng", given_name="Carol", family_name="Ng", ordinal=0)],
+        year=2024,
+        venue="Proceedings of Example Conference",
+        doi="10.2000/demo",
+    )
+
+    entry = format_reference(paper, "bibtex")
+
+    assert entry.style == "bibtex"
+    assert entry.formatted_text.startswith("@inproceedings")
+    assert "author = {Ng, Carol}" in entry.formatted_text

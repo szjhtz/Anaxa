@@ -18,6 +18,11 @@ def test_apply_prompt_template_includes_research_routing_guidance(monkeypatch):
     assert "文献" in rendered
     assert "academic_research" in rendered
     assert "research_assistant" in rendered
+    assert "run_pipeline" in rendered
+    assert "action=\"run_pipeline\"" in rendered
+    assert "experiment_execution" in rendered
+    assert "pre_review" in rendered
+    assert "final_release" in rendered
     assert "academic-researcher" in rendered
     assert "experiment_lab" in rendered
     assert "empirical-research-methods" in rendered

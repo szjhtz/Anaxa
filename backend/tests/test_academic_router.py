@@ -92,6 +92,15 @@ def test_academic_router_end_to_end():
         assert references.json()["style"] == "apa7"
         assert len(references.json()["data"]) >= 1
 
+        gbt_references = client.get(f"/api/academic/projects/{project_id}/references?style=gbt7714")
+        assert gbt_references.status_code == 200
+        assert gbt_references.json()["style"] == "gbt7714"
+        assert gbt_references.json()["style_label"] == "GB/T 7714"
+        assert gbt_references.json()["data"][0]["style"] == "gbt7714"
+
+        unsupported_references = client.get(f"/api/academic/projects/{project_id}/references?style=made-up-style")
+        assert unsupported_references.status_code == 422
+
         graph = client.get(f"/api/academic/projects/{project_id}/graph")
         assert graph.status_code == 200
         assert graph.json()["project_id"] == project_id

@@ -184,6 +184,12 @@ Configuration priority:
 Config values starting with `$` are resolved as environment variables (e.g., `$OPENAI_API_KEY`).
 `ModelConfig` also declares `use_responses_api` and `output_version` so OpenAI `/v1/responses` can be enabled explicitly while still using `langchain_openai:ChatOpenAI`.
 
+**Research Configuration** (`config.yaml` → `research`):
+- `manuscript_model`: optional model name for manuscript section generation in `research_assistant action="run_pipeline"`; `null` inherits the current thread model.
+- `default_auto_gates`: gate types that `run_pipeline` may auto-approve by default. Keep this empty unless the product deliberately allows unattended gates.
+- `default_max_stages`: maximum lifecycle stages advanced by one `run_pipeline` tool call; defaults to `5` to avoid long blocking tool calls.
+- Academic reference formatting is user-selected. `academic_research`, `/api/academic/projects/{project_id}/synthesize`, and `/api/academic/projects/{project_id}/references` accept `reference_style`/`style` values such as `apa7`, `mla9`, `chicago`, `gbt7714`, `plain`, and `bibtex`; APA 7 is only the compatibility default when no style is specified.
+
 **Extensions Configuration** (`extensions_config.json`):
 
 MCP servers and skills are configured together in `extensions_config.json` in project root:
@@ -259,6 +265,21 @@ Proxied through nginx: `/api/langgraph/*` → LangGraph, all other `/api/*` → 
 - `jina_ai/` - Web fetch via Jina reader API with readability extraction
 - `firecrawl/` - Web scraping via Firecrawl API
 - `image_search/` - Image search via DuckDuckGo
+
+### Research Pipeline (`packages/harness/medrix_flow/research/`)
+
+The research layer is a harness-only lifecycle system. It must not import `app.*`.
+
+- `types.py` defines the lifecycle stages, gates, `PipelineStageEvent`, and `PipelineRunResult`.
+- `service.py` owns deterministic persistence and stage handlers. `advance_quest()` remains the single-stage primitive and accepts optional generator callbacks for stages that need LLM content.
+- `orchestrator.py` owns longer coordination. `run_pipeline()` loops over `advance_quest()` until `final_bundle`, a non-auto human gate, cancellation, error, or `max_stages`.
+- `tools/builtins/research_assistant_tool.py` exposes `action="run_pipeline"` for end-to-end autonomous research requests. The tool injects manuscript content generation via `create_chat_model()` and keeps service/orchestrator free of model factory dependencies.
+- Human gate defaults are conservative: `experiment_execution`, `pre_review`, and `final_release` stop the pipeline unless explicitly included in `auto_gates` or configured in `research.default_auto_gates`.
+
+Regression coverage:
+- `tests/test_research_pipeline.py` covers pipeline result serialization, auto gates, max-stage stops, blocked gates, and cancelled quests.
+- `tests/test_research_service.py` covers manuscript content generation fallback and deterministic result synthesis.
+- `tests/test_research_assistant_tool.py` covers `research_assistant action="run_pipeline"` dispatch and config defaults.
 
 ### MCP System (`packages/harness/medrix_flow/mcp/`)
 

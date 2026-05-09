@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from medrix_flow.academic.utils import detect_domain, slugify
@@ -24,6 +25,9 @@ from .types import (
     ResearchStage,
     ReviewerReportRecord,
 )
+
+ContentGenerator = Callable[[str, ResearchQuestSnapshot], Awaitable[str]]
+ReviewerGenerator = Callable[[str, ResearchQuestSnapshot], Awaitable[dict[str, Any]]]
 
 _EMPIRICAL_METHOD_HINTS = {
     "difference-in-differences": "did",
@@ -211,6 +215,8 @@ class ResearchQuestService:
         artifacts: list[str] | None = None,
         tool_name: str | None = None,
         model_name: str | None = None,
+        content_generator: ContentGenerator | None = None,
+        reviewer_generator: ReviewerGenerator | None = None,
     ) -> ResearchAdvanceResult:
         quest = await self._require_quest(quest_id)
         inputs = inputs or {}
@@ -282,7 +288,14 @@ class ResearchQuestService:
                     generated={"reason": "human_gate_required"},
                 )
 
-        generated = await self._apply_stage(quest, next_stage, inputs, artifacts)
+        generated = await self._apply_stage(
+            quest,
+            next_stage,
+            inputs,
+            artifacts,
+            content_generator=content_generator,
+            reviewer_generator=reviewer_generator,
+        )
         quest.stage = next_stage
         quest.status = "completed" if next_stage == "final_bundle" else "active"
         quest.updated_at = now_iso()
@@ -365,6 +378,9 @@ class ResearchQuestService:
         stage: ResearchStage,
         inputs: dict[str, Any],
         artifacts: list[str],
+        *,
+        content_generator: ContentGenerator | None = None,
+        reviewer_generator: ReviewerGenerator | None = None,
     ) -> dict[str, Any]:
         if stage == "literature":
             return await self._stage_literature(quest, inputs)
@@ -379,7 +395,7 @@ class ResearchQuestService:
         if stage == "results_synthesized":
             return await self._stage_results_synthesized(quest, inputs, artifacts)
         if stage == "manuscript_draft":
-            return await self._stage_manuscript_draft(quest, inputs, artifacts)
+            return await self._stage_manuscript_draft(quest, inputs, artifacts, content_generator=content_generator)
         if stage == "review":
             return await self._stage_review(quest, inputs)
         if stage == "revision":
@@ -583,17 +599,29 @@ class ResearchQuestService:
                 branch.status = "completed"
             branch.updated_at = now_iso()
             await self._repository.upsert_experiment_branch(branch)
-        return {"branch_count": len(branches), "metric_keys": sorted(metrics), "artifact_count": len(artifacts)}
+        branches = await self._repository.list_experiment_branches(quest.quest_id)
+        hypotheses = await self._collect_hypotheses(quest.quest_id, inputs)
+        return {
+            "branch_count": len(branches),
+            "metric_keys": sorted(metrics),
+            "artifact_count": len(artifacts),
+            "hypothesis_outcomes": [
+                self._evaluate_hypothesis(hypothesis, branches, metrics) for hypothesis in hypotheses
+            ],
+            "significance_summary": self._summarize_significance(metrics),
+        }
 
     async def _stage_manuscript_draft(
         self,
         quest: ResearchQuest,
         inputs: dict[str, Any],
         artifacts: list[str],
+        content_generator: ContentGenerator | None = None,
     ) -> dict[str, Any]:
         sections = self._normalize_dict_list(inputs.get("sections"))
         evidence = await self._repository.list_claim_evidence(quest.quest_id)
         claim_ids = [item.claim_id for item in evidence]
+        content_generation_errors: list[dict[str, str]] = []
         if not sections:
             sections = [
                 {"section_key": "introduction", "title": "Introduction"},
@@ -603,13 +631,26 @@ class ResearchQuestService:
                 {"section_key": "limitations", "title": "Limitations"},
             ]
         for payload in sections:
+            section_key = str(payload.get("section_key") or slugify(str(payload.get("title") or "section")))
+            content = str(payload.get("content") or "")
+            if not content and content_generator is not None:
+                try:
+                    generated_content = (await content_generator(section_key, await self.get_snapshot(quest.quest_id))).strip()
+                    if generated_content:
+                        content = generated_content
+                    else:
+                        content_generation_errors.append(
+                            {"section_key": section_key, "error": "content_generator returned empty content"}
+                        )
+                except Exception as exc:
+                    content_generation_errors.append({"section_key": section_key, "error": str(exc)})
             await self._repository.upsert_manuscript_section(
                 ManuscriptSectionRecord(
                     section_id=str(payload.get("section_id") or f"section-{uuid.uuid4().hex[:12]}"),
                     quest_id=quest.quest_id,
-                    section_key=str(payload.get("section_key") or slugify(str(payload.get("title") or "section"))),
+                    section_key=section_key,
                     title=str(payload.get("title") or "Section"),
-                    content=str(payload.get("content") or ""),
+                    content=content,
                     claim_ids=payload.get("claim_ids", claim_ids),
                     artifact_paths=payload.get("artifact_paths", artifacts),
                     status=str(payload.get("status") or "draft"),
@@ -618,7 +659,12 @@ class ResearchQuestService:
                 )
             )
         await self._ensure_gate(quest, "review", "pre_review")
-        return {"section_count": len(sections), "linked_claim_count": len(claim_ids), "review_gate": "pre_review"}
+        return {
+            "section_count": len(sections),
+            "linked_claim_count": len(claim_ids),
+            "review_gate": "pre_review",
+            "content_generation_errors": content_generation_errors,
+        }
 
     async def _stage_review(self, quest: ResearchQuest, inputs: dict[str, Any]) -> dict[str, Any]:
         evidence = await self._repository.list_claim_evidence(quest.quest_id)
@@ -758,6 +804,162 @@ class ResearchQuestService:
         if not isinstance(value, list):
             return []
         return [item for item in value if isinstance(item, dict)]
+
+    async def _collect_hypotheses(self, quest_id: str, inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        hypotheses: list[dict[str, Any]] = []
+        for index, payload in enumerate(self._normalize_dict_list(inputs.get("hypotheses"))):
+            statement = str(payload.get("statement") or payload.get("hypothesis") or "").strip()
+            if statement:
+                hypotheses.append(
+                    {
+                        "hypothesis_id": str(payload.get("hypothesis_id") or payload.get("id") or f"input:{index}"),
+                        "statement": statement,
+                        "primary_metric": payload.get("primary_metric"),
+                        "baseline": payload.get("baseline"),
+                        "direction": payload.get("direction"),
+                    }
+                )
+
+        novelty_checks = await self._repository.list_novelty_checks(quest_id)
+        for check in novelty_checks:
+            for index, statement in enumerate(check.hypotheses):
+                text = str(statement).strip()
+                if text:
+                    hypotheses.append(
+                        {
+                            "hypothesis_id": f"{check.check_id}:{index}",
+                            "statement": text,
+                            "primary_metric": None,
+                            "baseline": None,
+                            "direction": None,
+                        }
+                    )
+        return hypotheses
+
+    @classmethod
+    def _evaluate_hypothesis(
+        cls,
+        hypothesis: dict[str, Any],
+        branches: list[ExperimentBranchRecord],
+        metrics: dict[str, Any],
+    ) -> dict[str, Any]:
+        primary_metric = hypothesis.get("primary_metric")
+        if not isinstance(primary_metric, str) or not primary_metric:
+            return {
+                "hypothesis_id": hypothesis["hypothesis_id"],
+                "statement": hypothesis["statement"],
+                "outcome": "inconclusive",
+                "evidence_metric_keys": [],
+            }
+
+        evidence_values = cls._metric_values(primary_metric, branches, metrics)
+        baseline = cls._coerce_float(hypothesis.get("baseline"))
+        if baseline is None:
+            baseline = cls._baseline_metric_value(primary_metric, branches, metrics)
+        if not evidence_values or baseline is None:
+            outcome = "inconclusive"
+        else:
+            best_value = max(evidence_values)
+            worst_value = min(evidence_values)
+            direction = str(hypothesis.get("direction") or "increase").lower()
+            if direction in {"decrease", "lower", "less", "minimize", "<", "<="}:
+                outcome = "supported" if worst_value <= baseline else "refuted"
+            else:
+                outcome = "supported" if best_value >= baseline else "refuted"
+
+        return {
+            "hypothesis_id": hypothesis["hypothesis_id"],
+            "statement": hypothesis["statement"],
+            "outcome": outcome,
+            "evidence_metric_keys": [primary_metric],
+        }
+
+    @classmethod
+    def _metric_values(
+        cls,
+        primary_metric: str,
+        branches: list[ExperimentBranchRecord],
+        metrics: dict[str, Any],
+    ) -> list[float]:
+        values: list[float] = []
+        direct = cls._coerce_float(metrics.get(primary_metric))
+        if direct is not None:
+            values.append(direct)
+        for branch in branches:
+            value = cls._coerce_float(branch.metrics.get(primary_metric))
+            if value is not None and branch.branch_type != "baseline":
+                values.append(value)
+        if values:
+            return values
+        for branch in branches:
+            value = cls._coerce_float(branch.metrics.get(primary_metric))
+            if value is not None:
+                values.append(value)
+        return values
+
+    @classmethod
+    def _baseline_metric_value(
+        cls,
+        primary_metric: str,
+        branches: list[ExperimentBranchRecord],
+        metrics: dict[str, Any],
+    ) -> float | None:
+        baseline_metrics = metrics.get("baseline")
+        if isinstance(baseline_metrics, dict):
+            value = cls._coerce_float(baseline_metrics.get(primary_metric))
+            if value is not None:
+                return value
+        baseline_key = f"baseline_{primary_metric}"
+        value = cls._coerce_float(metrics.get(baseline_key))
+        if value is not None:
+            return value
+        for branch in branches:
+            if branch.branch_type == "baseline":
+                value = cls._coerce_float(branch.metrics.get(primary_metric))
+                if value is not None:
+                    return value
+                value = cls._coerce_float(branch.metadata.get(primary_metric))
+                if value is not None:
+                    return value
+        return None
+
+    @staticmethod
+    def _summarize_significance(metrics: dict[str, Any]) -> dict[str, Any]:
+        alpha = 0.05
+        p_value_keys: list[str] = []
+        ci_metric_roots: set[str] = set()
+        significant_keys: set[str] = set()
+        for key, value in metrics.items():
+            if key.endswith(("_p_value", "_p")):
+                p_value = ResearchQuestService._coerce_float(value)
+                p_value_keys.append(key)
+                if p_value is not None and p_value < alpha:
+                    significant_keys.add(key)
+            elif key.endswith("_ci_lower"):
+                ci_metric_roots.add(key.removesuffix("_ci_lower"))
+            elif key.endswith("_ci_upper"):
+                ci_metric_roots.add(key.removesuffix("_ci_upper"))
+
+        for root in ci_metric_roots:
+            lower = ResearchQuestService._coerce_float(metrics.get(f"{root}_ci_lower"))
+            upper = ResearchQuestService._coerce_float(metrics.get(f"{root}_ci_upper"))
+            if lower is not None and upper is not None and (lower > 0 or upper < 0):
+                significant_keys.add(f"{root}_ci")
+
+        return {
+            "has_significance_data": bool(p_value_keys or ci_metric_roots),
+            "significant_keys": sorted(significant_keys),
+            "alpha": alpha,
+        }
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float | None:
+        try:
+            if value is None or isinstance(value, bool):
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _estimate_overlap_risk(idea: str, closest_papers: list[dict[str, Any]], requested: Any) -> OverlapRisk:

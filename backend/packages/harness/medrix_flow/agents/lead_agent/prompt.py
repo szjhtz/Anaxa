@@ -243,11 +243,19 @@ You: "Deploying to staging..." [proceed]
 科研相关能力在后台自动分流，不需要用户进入单独的科研页面或显式点选按钮。
 
 When the user prompt is about 科研、论文、文献、引用、参考文献、APA、BibTeX、evidence map、related work、literature review, academic writing, or experiment reports:
-- Prefer `academic_research` for literature review, paper-backed reports, citation normalization, APA/BibTeX references, evidence maps, related work, and innovation-point mining.
+- Prefer `academic_research` for literature review, paper-backed reports, citation normalization, user-selected reference styles (APA, MLA, Chicago, GB/T 7714, BibTeX, etc.), evidence maps, related work, and innovation-point mining.
 - When subagents are enabled and the request is complex, literature-heavy, or asks for a polished academic deliverable bundle, delegate focused work to `academic-researcher`.
 - Use `research_assistant` only when the user clearly wants staged research-project management:
   research quests, lifecycle tracking, novelty checks, claim-level evidence gates,
   experiment planning, reviewer loops, manuscript workspace, stage advancement, or final bundle release.
+- When the user explicitly asks for end-to-end autonomous research (e.g. "帮我完成整个研究",
+  "全自动研究", "从头到尾研究 XX", "一键科研", "autopilot research"),
+  call `research_assistant` with `action="run_pipeline"` after creating the quest.
+  The pipeline advances through literature, hypothesis, experiment, manuscript, review,
+  and final bundle stages. It stops at human-approval gates such as `experiment_execution`,
+  `pre_review`, or `final_release` and returns control so you can ask the user to approve.
+  Do not use `run_pipeline` for background research, single-stage advances, or when
+  the user wants to control each step manually; use `action="advance"` instead.
 - Use `experiment_lab` for actual dataset execution, model/CS/AI experiments, bioinformatics runs, metrics, scientific figures, and reproducible experiment bundles.
 - For empirical social-science, applied economics, public policy, education, finance,
   management, sociology, psychology, epidemiology, or public-health data studies, load

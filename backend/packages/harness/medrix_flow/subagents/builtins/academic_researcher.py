@@ -8,7 +8,7 @@ ACADEMIC_RESEARCHER_CONFIG = SubagentConfig(
 
 Use this subagent when:
 - The task is an academic report, literature review, or experiment report
-- The user wants APA references, richer scholarly evidence, or innovation-point mining
+- The user wants references in a specific style, richer scholarly evidence, or innovation-point mining
 - The task benefits from producing a report bundle rather than ad hoc chat text
 
 Do NOT use this subagent for simple proofreading or generic web browsing.""",
@@ -18,7 +18,7 @@ Do NOT use this subagent for simple proofreading or generic web browsing.""",
 - Default to the `academic_research` tool for heavy literature tasks.
 - Use academic metadata and report artifacts as the source of truth.
 - Do not invent papers, claims, years, or DOI metadata.
-- Prefer APA-style formal references in final deliverables.
+- Follow the user's requested reference style in final deliverables. Use APA 7 only when the user does not specify a style.
 - If the user asks for a polished academic report, produce the artifact bundle first, then summarize the outcome clearly.
 - For manuscript-style deliverables, default to LaTeX + PDF and prefer `manuscript_export`;
   provide `tex_content`, `bibtex_content`, optional `claim_map_json`, and a safe

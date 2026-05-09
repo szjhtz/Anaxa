@@ -16,6 +16,21 @@ async def _make_service() -> tuple[ResearchQuestService, SQLiteRuntimeDB]:
     return ResearchQuestService(repo), db
 
 
+async def _advance_to_results_stage(service: ResearchQuestService, quest_id: str) -> None:
+    await service.advance_quest(quest_id)
+    await service.advance_quest(quest_id, inputs={"overlap_risk": "low"})
+    await service.advance_quest(quest_id)
+    await service.advance_quest(quest_id)
+    await service.decide_gate(
+        quest_id,
+        stage="experiment_running",
+        gate_type="experiment_execution",
+        status="approved",
+    )
+    await service.advance_quest(quest_id, inputs={"experiment_project_id": "exp-manuscript-test"})
+    await service.advance_quest(quest_id, inputs={"metrics": {"accuracy": 0.82}})
+
+
 def test_research_quest_lifecycle_gates_and_artifacts():
     async def scenario() -> None:
         service, db = await _make_service()
@@ -140,6 +155,153 @@ def test_research_quest_lifecycle_gates_and_artifacts():
         assert len(snapshot.experiment_branches) == 1
         assert len(snapshot.manuscript_sections) >= 5
         assert len(snapshot.reviewer_reports) == 4
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_manuscript_draft_auto_fills_content():
+    async def scenario() -> None:
+        service, db = await _make_service()
+        quest = await service.create_quest(thread_id="thread-manuscript-1", topic="citation key auditing")
+        await _advance_to_results_stage(service, quest.quest_id)
+
+        async def generator(section_key, snapshot):
+            return f"Generated content for {section_key} in {snapshot.quest.title}."
+
+        manuscript = await service.advance_quest(quest.quest_id, content_generator=generator)
+
+        assert manuscript.quest.stage == "manuscript_draft"
+        assert manuscript.generated["content_generation_errors"] == []
+        sections = await service.list_manuscript_sections(quest.quest_id)
+        assert len(sections) >= 5
+        assert all(section.content.startswith("Generated content for ") for section in sections)
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_manuscript_draft_generator_failure_fallback():
+    async def scenario() -> None:
+        service, db = await _make_service()
+        quest = await service.create_quest(thread_id="thread-manuscript-2", topic="review gate resilience")
+        await _advance_to_results_stage(service, quest.quest_id)
+
+        async def generator(section_key, snapshot):
+            raise RuntimeError(f"cannot generate {section_key} for {snapshot.quest.quest_id}")
+
+        manuscript = await service.advance_quest(quest.quest_id, content_generator=generator)
+
+        assert manuscript.quest.stage == "manuscript_draft"
+        assert len(manuscript.generated["content_generation_errors"]) >= 5
+        sections = await service.list_manuscript_sections(quest.quest_id)
+        assert len(sections) >= 5
+        assert all(section.content == "" for section in sections)
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_results_synthesized_hypothesis_outcomes():
+    async def scenario() -> None:
+        service, db = await _make_service()
+        quest = await service.create_quest(thread_id="thread-results-1", topic="accuracy improvements")
+        await service.advance_quest(quest.quest_id)
+        await service.advance_quest(
+            quest.quest_id,
+            inputs={
+                "overlap_risk": "low",
+                "hypotheses": ["The intervention improves accuracy."],
+            },
+        )
+        await service.advance_quest(quest.quest_id)
+        await service.advance_quest(
+            quest.quest_id,
+            inputs={
+                "branches": [
+                    {
+                        "name": "Baseline",
+                        "branch_type": "baseline",
+                        "metrics": {"accuracy": 0.70},
+                        "priority": 0.5,
+                    },
+                    {
+                        "name": "Intervention",
+                        "branch_type": "ablation",
+                        "metrics": {"accuracy": 0.85},
+                        "priority": 1.0,
+                    },
+                ]
+            },
+        )
+        await service.decide_gate(
+            quest.quest_id,
+            stage="experiment_running",
+            gate_type="experiment_execution",
+            status="approved",
+        )
+        await service.advance_quest(quest.quest_id, inputs={"experiment_project_id": "exp-results-test"})
+
+        results = await service.advance_quest(
+            quest.quest_id,
+            inputs={
+                "hypotheses": [
+                    {
+                        "id": "hyp-accuracy",
+                        "statement": "The intervention improves accuracy.",
+                        "primary_metric": "accuracy",
+                    }
+                ],
+                "metrics": {"accuracy_p_value": 0.03, "effect_ci_lower": 0.02, "effect_ci_upper": 0.14},
+            },
+        )
+
+        assert results.quest.stage == "results_synthesized"
+        outcomes = results.generated["hypothesis_outcomes"]
+        assert outcomes[0]["hypothesis_id"] == "hyp-accuracy"
+        assert outcomes[0]["outcome"] == "supported"
+        assert outcomes[0]["evidence_metric_keys"] == ["accuracy"]
+        assert results.generated["significance_summary"] == {
+            "has_significance_data": True,
+            "significant_keys": ["accuracy_p_value", "effect_ci"],
+            "alpha": 0.05,
+        }
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_results_synthesized_hypothesis_outcomes_are_inconclusive_without_metrics():
+    async def scenario() -> None:
+        service, db = await _make_service()
+        quest = await service.create_quest(thread_id="thread-results-2", topic="missing metric hypothesis")
+        await service.advance_quest(quest.quest_id)
+        await service.advance_quest(quest.quest_id, inputs={"overlap_risk": "low"})
+        await service.advance_quest(quest.quest_id)
+        await service.advance_quest(quest.quest_id)
+        await service.decide_gate(
+            quest.quest_id,
+            stage="experiment_running",
+            gate_type="experiment_execution",
+            status="approved",
+        )
+        await service.advance_quest(quest.quest_id, inputs={"experiment_project_id": "exp-results-missing"})
+
+        results = await service.advance_quest(
+            quest.quest_id,
+            inputs={
+                "hypotheses": [
+                    {
+                        "id": "hyp-missing",
+                        "statement": "The intervention improves accuracy.",
+                        "primary_metric": "accuracy",
+                    }
+                ]
+            },
+        )
+
+        assert results.generated["hypothesis_outcomes"][0]["outcome"] == "inconclusive"
+        assert results.generated["significance_summary"]["has_significance_data"] is False
         await db.close()
 
     asyncio.run(scenario())
