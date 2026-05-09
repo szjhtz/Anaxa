@@ -59,6 +59,7 @@ import {
   type FormEventHandler,
   Fragment,
   type HTMLAttributes,
+  type KeyboardEvent,
   type KeyboardEventHandler,
   type PropsWithChildren,
   type ReactNode,
@@ -70,6 +71,8 @@ import {
   useRef,
   useState,
 } from "react";
+
+const IME_ENTER_CONFIRMATION_WINDOW_MS = 150;
 
 // ============================================================================
 // Provider Context & Types
@@ -834,10 +837,44 @@ export const PromptInputTextarea = ({
   // confirm text in Chinese IME. A ref with delayed reset ensures the
   // flag is still true when the subsequent keydown event fires.
   const isComposingRef = useRef(false);
+  const compositionEndAtRef = useRef(0);
+  const compositionResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  useEffect(
+    () => () => {
+      if (compositionResetTimeoutRef.current) {
+        clearTimeout(compositionResetTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const getImeEnterState = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const nativeEvent = e.nativeEvent as globalThis.KeyboardEvent;
+    const recentlyEndedComposition =
+      compositionEndAtRef.current > 0 &&
+      Date.now() - compositionEndAtRef.current <
+        IME_ENTER_CONFIRMATION_WINDOW_MS;
+
+    return {
+      isImeEnter:
+        isComposingRef.current ||
+        e.nativeEvent.isComposing ||
+        nativeEvent.keyCode === 229 ||
+        recentlyEndedComposition,
+      preventDefault: recentlyEndedComposition,
+    };
+  };
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.key === "Enter") {
-      if (isComposingRef.current || e.nativeEvent.isComposing) {
+      const imeEnter = getImeEnterState(e);
+      if (imeEnter.isImeEnter) {
+        if (imeEnter.preventDefault) {
+          e.preventDefault();
+        }
         return;
       }
       if (e.shiftKey) {
@@ -912,11 +949,21 @@ export const PromptInputTextarea = ({
       className={cn("field-sizing-content max-h-48 min-h-16", className)}
       name="message"
       onCompositionEnd={() => {
-        setTimeout(() => {
+        compositionEndAtRef.current = Date.now();
+        if (compositionResetTimeoutRef.current) {
+          clearTimeout(compositionResetTimeoutRef.current);
+        }
+        compositionResetTimeoutRef.current = setTimeout(() => {
           isComposingRef.current = false;
-        }, 0);
+          compositionResetTimeoutRef.current = null;
+        }, IME_ENTER_CONFIRMATION_WINDOW_MS);
       }}
       onCompositionStart={() => {
+        if (compositionResetTimeoutRef.current) {
+          clearTimeout(compositionResetTimeoutRef.current);
+          compositionResetTimeoutRef.current = null;
+        }
+        compositionEndAtRef.current = 0;
         isComposingRef.current = true;
       }}
       onKeyDown={handleKeyDown}
