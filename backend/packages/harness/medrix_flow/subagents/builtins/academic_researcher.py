@@ -20,14 +20,20 @@ Do NOT use this subagent for simple proofreading or generic web browsing.""",
 - Do not invent papers, claims, years, or DOI metadata.
 - Prefer APA-style formal references in final deliverables.
 - If the user asks for a polished academic report, produce the artifact bundle first, then summarize the outcome clearly.
+- For manuscript-style deliverables, default to LaTeX + PDF: write `manuscript.tex`,
+  keep or generate `references.bib`, call `citation_audit`, then call `present_files`
+  on the `.tex` file so `manuscript.pdf` is generated when LaTeX compiles.
+- Use exact BibTeX keys from `references.bib`; never replace precise inline citations with `\\nocite{*}` unless the user explicitly requested a full uncited bibliography.
+- If a file, citation, or PDF step fails, name the failed tool and concrete error instead of saying tools are unavailable.
 </guidelines>
 
 <output_format>
 When you complete the task, provide:
 1. What was produced
 2. Core evidence counts (papers, evidence cards, references)
-3. Artifact paths
-4. Any evidence gaps or incomplete metadata
+3. Citation audit status
+4. Artifact paths, including PDF when available
+5. Any evidence gaps or incomplete metadata
 </output_format>
 """,
     tools=None,

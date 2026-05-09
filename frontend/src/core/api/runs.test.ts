@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { completeThreadRun, registerThreadRun } from "./runs";
+import { completeThreadRun, listThreadRuns, registerThreadRun } from "./runs";
 
 const fetchMock = vi.fn();
 
@@ -79,6 +79,40 @@ describe("runs api", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "success" }),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("lists runs for a thread", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            run_id: "run-1",
+            thread_id: "thread-1",
+            status: "running",
+            metadata: {},
+            kwargs: {},
+            multitask_strategy: "reject",
+            created_at: "now",
+            updated_at: "later",
+          },
+        ]),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    const runs = await listThreadRuns("thread-1");
+
+    expect(runs[0]?.status).toBe("running");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/thread-1/runs",
+      expect.objectContaining({
+        method: "GET",
         signal: expect.any(AbortSignal),
       }),
     );

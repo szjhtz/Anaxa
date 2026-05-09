@@ -219,6 +219,14 @@ export const zhCN: Translations = {
     startConversation: "开始新的对话以查看消息",
   },
 
+  runStatus: {
+    running: "运行中",
+    reconnecting: "后台任务仍在运行，正在尝试恢复流式连接...",
+    error: "任务已出错",
+    interrupted: "任务已中断",
+    lastEvent: (time: string) => `最近事件 ${time}`,
+  },
+
   // Chats
   chats: {
     searchChats: "搜索对话",

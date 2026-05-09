@@ -43,6 +43,22 @@ export async function registerThreadRun(
   return response.json() as Promise<RunData>;
 }
 
+export async function listThreadRuns(threadId: string): Promise<RunData[]> {
+  const response = await fetchWithTimeout(
+    `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}/runs`,
+    {
+      method: "GET",
+    },
+  );
+  if (!response.ok) {
+    const error = (await response.json().catch(() => ({}))) as {
+      detail?: string;
+    };
+    throw new Error(error.detail ?? "Failed to list runs.");
+  }
+  return response.json() as Promise<RunData[]>;
+}
+
 export async function completeThreadRun(
   threadId: string,
   runId: string,

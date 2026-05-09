@@ -7,6 +7,7 @@ from medrix_flow.reflection import resolve_variable
 from medrix_flow.tools.builtins import (
     academic_research_tool,
     ask_clarification_tool,
+    citation_audit_tool,
     experiment_lab_tool,
     present_file_tool,
     research_assistant_tool,
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 BUILTIN_TOOLS = [
     present_file_tool,
     ask_clarification_tool,
+    citation_audit_tool,
     academic_research_tool,
     experiment_lab_tool,
     research_assistant_tool,

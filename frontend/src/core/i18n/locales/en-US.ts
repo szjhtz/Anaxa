@@ -230,6 +230,14 @@ export const enUS: Translations = {
     startConversation: "Start a conversation to see messages here",
   },
 
+  runStatus: {
+    running: "Running",
+    reconnecting: "Backend run is still active. Reconnecting stream...",
+    error: "Run ended with an error",
+    interrupted: "Run interrupted",
+    lastEvent: (time: string) => `Last event ${time}`,
+  },
+
   // Chats
   chats: {
     searchChats: "Search chats",

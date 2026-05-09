@@ -5,6 +5,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { StreamdownProps } from "streamdown";
+import { visit } from "unist-util-visit";
 
 import { rehypeSplitWordsIntoSpans } from "../rehype";
 
@@ -80,9 +81,29 @@ export const streamdownPluginsWithWordAnimation = {
   ] as StreamdownProps["rehypePlugins"],
 };
 
+type MarkdownNode = {
+  type: string;
+  children?: MarkdownNode[];
+  value?: string;
+};
+
+type MarkdownHtmlNode = MarkdownNode & {
+  type: "html" | "text";
+  value?: string;
+};
+
+export function remarkHumanHtmlAsText() {
+  return (tree: MarkdownNode) => {
+    visit(tree, "html", (node: MarkdownHtmlNode) => {
+      node.type = "text";
+    });
+  };
+}
+
 // Plugins for human messages - no autolink to prevent URL bleeding into adjacent text
 export const humanMessagePlugins = {
   remarkPlugins: [
+    remarkHumanHtmlAsText,
     // Use remark-gfm without autolink literals by not including it
     // Only include math support for human messages
     [remarkMath, { singleDollarTextMath: true }],

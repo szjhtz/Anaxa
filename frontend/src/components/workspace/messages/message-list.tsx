@@ -25,7 +25,7 @@ import type { AgentThreadState } from "@/core/threads";
 import { cn } from "@/lib/utils";
 
 import { ArtifactFileList } from "../artifacts/artifact-file-list";
-import { StreamingIndicator } from "../streaming-indicator";
+import { RunStatusIndicator } from "../run-status-indicator";
 
 import { ClarificationCard } from "./clarification-card";
 import { useThread } from "./context";
@@ -222,7 +222,12 @@ export function MessageList({
             />
           );
         })}
-        {thread.isLoading && <StreamingIndicator className="my-4" />}
+        <RunStatusIndicator
+          className="my-4"
+          threadId={threadId}
+          currentRunId={runId}
+          streaming={thread.isLoading}
+        />
         <div style={{ height: `${paddingBottom}px` }} />
       </ConversationContent>
     </Conversation>

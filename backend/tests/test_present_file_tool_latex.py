@@ -52,6 +52,34 @@ def test_present_files_adds_pdf_for_tex(tmp_path, monkeypatch):
     ]
 
 
+def test_present_files_blocks_pdf_when_citation_audit_fails(tmp_path, monkeypatch):
+    outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
+    outputs_dir.mkdir(parents=True)
+    tex_path = outputs_dir / "manuscript.tex"
+    bibtex_path = outputs_dir / "references.bib"
+    tex_path.write_text("\\documentclass{article}\\begin{document}\\cite{missing}\\end{document}", encoding="utf-8")
+    bibtex_path.write_text("@article{known2024,\n  title = {Known}\n}\n", encoding="utf-8")
+
+    compile_mock = monkeypatch.setattr(
+        present_file_tool_module,
+        "compile_latex_to_pdf",
+        lambda _tex_path, _output_dir=None: (_ for _ in ()).throw(AssertionError("should not compile")),
+    )
+
+    result = present_file_tool_module.present_file_tool.func(
+        runtime=_make_runtime(str(outputs_dir)),
+        filepaths=[str(tex_path)],
+        tool_call_id="tc-1",
+    )
+
+    assert compile_mock is None
+    assert result.update["artifacts"] == [
+        "/mnt/user-data/outputs/citation_audit.json",
+        "/mnt/user-data/outputs/manuscript.tex",
+    ]
+    assert "Citation audit failed" in result.update["messages"][0].content
+
+
 def test_prepare_latex_preview_converts_unicode_subscripts(tmp_path):
     tex_path = tmp_path / "report.tex"
     tex_path.write_text(

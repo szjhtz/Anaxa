@@ -1,0 +1,88 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangleIcon, CircleStopIcon } from "lucide-react";
+
+import { listThreadRuns, type RunData } from "@/core/api/runs";
+import { useI18n } from "@/core/i18n/hooks";
+import { cn } from "@/lib/utils";
+
+import { StreamingIndicator } from "./streaming-indicator";
+
+const ACTIVE_RUN_STATUSES = new Set(["pending", "running"]);
+
+function formatUpdatedAt(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function resolveRun(runs: RunData[] | undefined, currentRunId?: string | null): RunData | undefined {
+  if (!runs || runs.length === 0) return undefined;
+  if (currentRunId) {
+    return runs.find((run) => run.run_id === currentRunId) ?? runs[0];
+  }
+  return runs[0];
+}
+
+export function RunStatusIndicator({
+  className,
+  threadId,
+  currentRunId,
+  streaming,
+}: {
+  className?: string;
+  threadId: string;
+  currentRunId?: string | null;
+  streaming: boolean;
+}) {
+  const { t } = useI18n();
+  const { data: runs } = useQuery({
+    queryKey: ["thread-runs", threadId],
+    queryFn: () => listThreadRuns(threadId),
+    enabled: Boolean(threadId),
+    refetchInterval: 5000,
+    staleTime: 1000,
+    retry: 1,
+  });
+
+  const run = resolveRun(runs, currentRunId);
+  const status = run?.status;
+  const active = Boolean(status && ACTIVE_RUN_STATUSES.has(status));
+  const showError = Boolean(currentRunId) && !streaming && status === "error";
+  const showInterrupted = Boolean(currentRunId) && !streaming && status === "interrupted";
+
+  if (!streaming && !active && !showError && !showInterrupted) {
+    return null;
+  }
+
+  const label = streaming
+    ? t.runStatus.running
+    : active
+      ? t.runStatus.reconnecting
+      : showError
+        ? t.runStatus.error
+        : t.runStatus.interrupted;
+  const updatedAt = formatUpdatedAt(run?.updated_at);
+
+  return (
+    <div
+      className={cn(
+        "text-muted-foreground flex items-center gap-2 text-xs",
+        className,
+      )}
+      data-testid="run-status-indicator"
+    >
+      {showError ? (
+        <AlertTriangleIcon className="size-3.5 text-amber-500" />
+      ) : showInterrupted ? (
+        <CircleStopIcon className="size-3.5" />
+      ) : (
+        <StreamingIndicator size="sm" />
+      )}
+      <span>{label}</span>
+      {updatedAt && <span className="opacity-70">{t.runStatus.lastEvent(updatedAt)}</span>}
+    </div>
+  );
+}

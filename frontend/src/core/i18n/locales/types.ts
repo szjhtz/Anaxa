@@ -168,6 +168,15 @@ export interface Translations {
     startConversation: string;
   };
 
+  // Run status
+  runStatus: {
+    running: string;
+    reconnecting: string;
+    error: string;
+    interrupted: string;
+    lastEvent: (time: string) => string;
+  };
+
   // Chats
   chats: {
     searchChats: string;

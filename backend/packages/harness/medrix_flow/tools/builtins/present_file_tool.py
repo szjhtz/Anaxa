@@ -10,6 +10,7 @@ from langgraph.typing import ContextT
 
 from medrix_flow.agents.thread_state import ThreadState
 from medrix_flow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
+from medrix_flow.utils.citations import audit_latex_citations, write_citation_audit
 from medrix_flow.utils.latex import compile_latex_to_pdf, prepare_latex_preview
 
 OUTPUTS_VIRTUAL_PREFIX = f"{VIRTUAL_PATH_PREFIX}/outputs"
@@ -90,6 +91,7 @@ def present_file_tool(
     """
     try:
         normalized_paths: list[str] = []
+        diagnostics: list[str] = []
         thread_id = runtime.context.get("thread_id")
         outputs_dir = Path(runtime.state.get("thread_data", {}).get("outputs_path", "")).resolve()
         for filepath in filepaths:
@@ -99,6 +101,21 @@ def present_file_tool(
                 try:
                     tex_relative = Path(normalized_path.removeprefix(OUTPUTS_VIRTUAL_PREFIX).lstrip("/"))
                     tex_path = outputs_dir / tex_relative
+                    bibtex_path = tex_path.with_name("references.bib")
+                    if bibtex_path.exists():
+                        audit_result = audit_latex_citations(bibtex_path=bibtex_path, tex_path=tex_path)
+                        audit_path = write_citation_audit(audit_result, tex_path.parent / "citation_audit.json")
+                        normalized_audit_path = f"{OUTPUTS_VIRTUAL_PREFIX}/{audit_path.relative_to(outputs_dir).as_posix()}"
+                        normalized_paths.append(normalized_audit_path)
+                        if not audit_result.passed:
+                            normalized_paths.append(normalized_path)
+                            diagnostics.append(
+                                f"Citation audit failed for {normalized_path}; PDF was not generated. "
+                                + " ".join(audit_result.violations)
+                            )
+                            logger.warning("LaTeX citation audit failed for %s: %s", normalized_path, audit_result.violations)
+                            continue
+
                     prepared_path = prepare_latex_preview(tex_path)
                     preview_pdf = compile_latex_to_pdf(prepared_path, prepared_path.parent)
                     final_pdf = tex_path.with_suffix(".pdf")
@@ -108,6 +125,7 @@ def present_file_tool(
                     logger.info("Compiled LaTeX preview: %s -> %s", tex_path, final_pdf)
                     continue
                 except Exception as exc:
+                    diagnostics.append(f"LaTeX preview compilation failed for {normalized_path}: {exc}")
                     logger.warning("LaTeX preview compilation failed for %s: %s", normalized_path, exc)
 
             normalized_paths.append(normalized_path)
@@ -117,9 +135,13 @@ def present_file_tool(
         )
 
     # The merge_artifacts reducer will handle merging and deduplication
+    message = "Successfully presented files"
+    if diagnostics:
+        message = "Presented files with issues:\n" + "\n".join(f"- {item}" for item in diagnostics)
+
     return Command(
         update={
             "artifacts": normalized_paths,
-            "messages": [ToolMessage("Successfully presented files", tool_call_id=tool_call_id)],
+            "messages": [ToolMessage(message, tool_call_id=tool_call_id)],
         },
     )
