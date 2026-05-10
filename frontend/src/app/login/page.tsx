@@ -21,7 +21,7 @@ export default async function LoginPage({
       <main className="from-background via-muted/30 to-background flex min-h-screen items-center justify-center bg-linear-to-br px-6 py-12">
         <Card className="w-full max-w-md border shadow-lg">
           <CardHeader className="space-y-1">
-            <CardTitle>MedrixFlow</CardTitle>
+            <CardTitle>Anaxa</CardTitle>
             <CardDescription>Protected mode is enabled, but no UI password is configured.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -49,7 +49,7 @@ export default async function LoginPage({
     <main className="from-background via-muted/30 to-background flex min-h-screen items-center justify-center bg-linear-to-br px-6 py-12">
       <Card className="w-full max-w-md border shadow-lg">
         <CardHeader className="space-y-1">
-          <CardTitle>MedrixFlow</CardTitle>
+          <CardTitle>Anaxa</CardTitle>
           <CardDescription>
             Enter the workspace password to access the UI and API.
           </CardDescription>

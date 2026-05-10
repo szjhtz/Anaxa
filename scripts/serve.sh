@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# start.sh - Start all MedrixFlow development services
+# start.sh - Start all Anaxa development services
 #
 # Must be run from the repo root directory.
 
@@ -49,7 +49,7 @@ sleep 1
 
 echo ""
 echo "=========================================="
-echo "  Starting MedrixFlow Development Server"
+echo "  Starting Anaxa Development Server"
 echo "=========================================="
 echo ""
 if $DEV_MODE; then
@@ -73,13 +73,13 @@ if ! { \
         [ -f backend/config.yaml ] || \
         [ -f config.yaml ]; \
     }; then
-    echo "✗ No MedrixFlow config file found."
+    echo "✗ No Anaxa config file found."
     echo "  Checked these locations:"
     echo "    - $MEDRIX_FLOW_CONFIG_PATH (when MEDRIX_FLOW_CONFIG_PATH is set)"
     echo "    - backend/config.yaml"
     echo "    - ./config.yaml"
     echo ""
-    echo "  Run 'make config' from the repo root to generate ./config.yaml, then set required model API keys in .env or your config file."
+    echo "  Run 'make bootstrap' from the repo root, then configure model API keys in the web UI."
     exit 1
 fi
 
@@ -217,9 +217,9 @@ echo "✓ Nginx started on localhost:1000"
 echo ""
 echo "=========================================="
 if $DEV_MODE; then
-    echo "  ✓ MedrixFlow development server is running!"
+    echo "  ✓ Anaxa development server is running!"
 else
-    echo "  ✓ MedrixFlow production server is running!"
+    echo "  ✓ Anaxa production server is running!"
 fi
 echo "=========================================="
 echo ""

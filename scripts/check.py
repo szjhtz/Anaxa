@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform dependency checker for MedrixFlow."""
+"""Cross-platform dependency checker for Anaxa."""
 
 from __future__ import annotations
 
@@ -114,10 +114,8 @@ def main() -> int:
         print("==========================================")
         print()
         print("You can now run:")
-        print("  make install  - Install project dependencies")
-        print("  make config   - Generate local config files")
-        print("  make dev      - Start development server")
-        print("  make start    - Start production server")
+        print("  make bootstrap - Create local config and install dependencies")
+        print("  make dev       - Start development server")
         return 0
 
     print("==========================================")

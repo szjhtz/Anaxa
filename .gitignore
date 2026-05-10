@@ -35,6 +35,7 @@ coverage.xml
 coverage/
 .medrix-flow/
 .claude/
+.codex/
 .omc/
 skills/custom/*
 logs/
@@ -52,6 +53,8 @@ web/
 
 # Deployment artifacts
 backend/Dockerfile.langgraph
+backend/.langgraph_api/
+backend/.medrix-flow/
 config.yaml.bak
 .obsidian/
 # Added by code-review-graph

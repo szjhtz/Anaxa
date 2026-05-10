@@ -424,6 +424,7 @@ def ensure_setup_files(project_root: Path) -> list[Path]:
         (project_root / "config.example.yaml", project_root / "config.yaml"),
         (project_root / ".env.example", project_root / ".env"),
         (project_root / "frontend" / ".env.example", project_root / "frontend" / ".env"),
+        (project_root / "extensions_config.example.json", project_root / "extensions_config.json"),
     ]
     for source, target in pairs:
         if target.exists():

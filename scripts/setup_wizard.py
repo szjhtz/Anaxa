@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Idempotent local setup wizard for MedrixFlow developers/operators."""
+"""Idempotent local setup wizard for Anaxa developers/operators."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from medrix_flow.setup import ensure_setup_files, get_setup_config_data  # noqa:
 
 def main() -> int:
     print("==========================================")
-    print("  MedrixFlow Setup Wizard")
+    print("  Anaxa Setup Wizard")
     print("==========================================")
     print()
 
@@ -47,9 +47,9 @@ def main() -> int:
 
     print()
     print("Next steps:")
-    print("  1. make doctor")
-    print("  2. make install")
-    print("  3. make dev")
+    print("  1. make install")
+    print("  2. make dev")
+    print("  3. Open http://localhost:1000 and configure models in the UI")
     return 0
 
 

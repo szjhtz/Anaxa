@@ -1,11 +1,12 @@
-# MedrixFlow - Unified Development Environment
+# Anaxa - Unified Development Environment
 
-.PHONY: help config setup doctor config-upgrade check install verify dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help bootstrap config setup doctor config-upgrade check install verify release-check dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
 
 PYTHON ?= python3
 
 help:
-	@echo "MedrixFlow Development Commands:"
+	@echo "Anaxa Development Commands:"
+	@echo "  make bootstrap       - First-time setup: check tools, create local config, install dependencies"
 	@echo "  make config          - Generate local config files (aborts if config already exists)"
 	@echo "  make setup           - Idempotent local setup wizard (creates missing config/env files)"
 	@echo "  make doctor          - Validate config, env vars, sandbox prerequisites, and DB writability"
@@ -13,6 +14,7 @@ help:
 	@echo "  make check           - Check if all required tools are installed"
 	@echo "  make install         - Install all dependencies (frontend + backend dev group)"
 	@echo "  make verify          - Run local checks aligned with CI (backend lint/test + frontend lint/typecheck)"
+	@echo "  make release-check   - Check that local secrets/runtime data are not tracked or staged"
 	@echo "  make dev             - Start all services in development mode (with hot-reloading)"
 	@echo "  make dev-daemon      - Start all services in background (daemon mode)"
 	@echo "  make start           - Start all services in production mode (optimized, no hot-reloading)"
@@ -30,6 +32,25 @@ help:
 	@echo "  make docker-logs     - View Docker development logs"
 	@echo "  make docker-logs-frontend - View Docker frontend logs"
 	@echo "  make docker-logs-gateway - View Docker gateway logs"
+
+bootstrap:
+	@echo "=========================================="
+	@echo "  Anaxa First-Time Bootstrap"
+	@echo "=========================================="
+	@echo ""
+	@$(PYTHON) ./scripts/check.py
+	@echo ""
+	@cd backend && uv run python ../scripts/setup_wizard.py
+	@echo ""
+	@$(MAKE) install
+	@echo ""
+	@echo "=========================================="
+	@echo "  ✓ Bootstrap complete"
+	@echo "=========================================="
+	@echo "Next:"
+	@echo "  1. make dev"
+	@echo "  2. Open http://localhost:1000"
+	@echo "  3. Configure your model/API keys in Settings & More -> Setup"
 
 config:
 	@$(PYTHON) ./scripts/configure.py
@@ -71,6 +92,9 @@ verify:
 	@echo "Running frontend build check..."
 	@cd frontend && BETTER_AUTH_SECRET=local-dev-secret pnpm build
 	@echo "✓ Verification checks passed"
+
+release-check:
+	@$(PYTHON) ./scripts/release_check.py
 
 # Pre-pull sandbox Docker image (optional but recommended)
 setup-sandbox:

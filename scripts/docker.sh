@@ -153,7 +153,7 @@ start() {
     local services
 
     echo "=========================================="
-    echo "  Starting MedrixFlow Docker Development"
+    echo "  Starting Anaxa Docker Development"
     echo "=========================================="
     echo ""
 

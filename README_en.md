@@ -1,13 +1,13 @@
-# Anaxa 3.0
+# Anaxa 1.0
 
 **English** | [中文](./README.md)
 
 <p align="center">
-  <img src="./Anaxa%20logo.jpg" alt="Anaxa" width="96">
+  <img src="./Anaxa%20logo.jpg" alt="Anaxa" width="180">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-3.0-111827?style=for-the-badge" alt="Version 3.0">
+  <img src="https://img.shields.io/badge/Version-1.0-111827?style=for-the-badge" alt="Version 1.0">
   <img src="https://img.shields.io/badge/Orchestration-LangGraph-blue?style=for-the-badge&logo=python" alt="LangGraph">
   <img src="https://img.shields.io/badge/Frontend-Next.js%2016-black?style=for-the-badge&logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" alt="React 19">
@@ -173,21 +173,45 @@ Runtime data is stored under `backend/.medrix-flow` or the directory pointed to 
 
 ## Quick Start
 
-### Requirements
+Anaxa 1.0 is released as an open-source development build by default: download the source, initialize local files, start the app locally, then configure models in the frontend. UI password protection is disabled by default; this mode is intended for localhost or trusted LAN development, not public internet deployment.
+
+### 1. Install Base Tools
+
+Install these system tools first:
 
 - Python 3.12+
-- Node.js and pnpm
+- Node.js 22+
+- pnpm
 - uv
 - nginx
-- Docker, optional for container sandboxing or `make up`
-- `tectonic`, optional but recommended for reliable LaTeX PDF generation
 
-### Local Development
+If you are not sure whether they are installed, run:
 
 ```bash
-make setup
-make doctor
-make install
+make check
+```
+
+The checker prints clear install hints for anything missing. `tectonic` is optional and only affects LaTeX PDF generation reliability.
+
+### 2. Download and Bootstrap
+
+```bash
+git clone <repo-url>
+cd <repo-folder>
+make bootstrap
+```
+
+`make bootstrap` does three things:
+
+- Checks local dependencies.
+- Creates local config files: `config.yaml`, `.env`, `frontend/.env`, and `extensions_config.json`.
+- Installs backend and frontend dependencies.
+
+Generated config files are ignored by Git. You do not need to edit API keys by hand; configure them in the frontend after startup.
+
+### 3. Start
+
+```bash
 make dev
 ```
 
@@ -197,79 +221,89 @@ Open:
 http://localhost:1000
 ```
 
-Local services:
+On first launch, open "Settings & More -> Setup" in the lower-left corner, add at least one chat model and API key, then save.
+
+The development command starts:
 
 - Frontend: `http://localhost:3000`
 - Gateway API: `http://localhost:8001`
 - LangGraph Server: `http://localhost:2024`
 - Unified Nginx entry: `http://localhost:1000`
 
-### Docker Production Mode
+### Optional Docker Path
+
+If you do not want to install Python/Node/nginx locally, use Docker development mode:
 
 ```bash
-make up
+make docker-init
+make docker-start
 ```
 
-Default access:
+Open the same URL:
 
 ```text
 http://localhost:1000
 ```
 
-If `PORT` is set, Docker Compose maps `${PORT}` to container port `1000`. Stop the stack with:
+Stop Docker development mode with:
 
 ```bash
-make down
+make docker-stop
 ```
 
 ### Common Commands
 
 | Command | Description |
 |---|---|
-| `make setup` | Idempotently create local config and env files |
-| `make doctor` | Validate config, env vars, sandbox prerequisites, and DB writability |
+| `make bootstrap` | First-time setup: check tools, create local config, install dependencies |
+| `make check` | Check Node.js, pnpm, uv, and nginx |
 | `make install` | Install backend and frontend dependencies |
 | `make dev` | Start hot-reload development services |
 | `make dev-daemon` | Start development services in the background |
-| `make start` | Start local production mode |
 | `make stop` | Stop local services |
-| `make up` | Build and start Docker production services |
-| `make down` | Stop Docker production services |
+| `make docker-start` | Start Docker development mode |
+| `make docker-stop` | Stop Docker development mode |
 | `make verify` | Run backend lint/test and frontend lint/typecheck/unit/build checks |
+| `make release-check` | Check that local secrets, caches, memory, and runtime data are not tracked by Git |
 
 ## Configuration
 
-### Model and App Configuration
+### Normal Use: Configure in the Frontend
 
-The main configuration file is `config.yaml`, with `config.example.yaml` as the template. The lookup order includes:
+After startup, visit `http://localhost:1000` and open "Settings & More -> Setup":
 
-1. `MEDRIX_FLOW_CONFIG_PATH`
-2. `backend/config.yaml`
-3. Root-level `config.yaml`
+- Add the model provider, model name, and API key.
+- Configure web search, web fetch, academic retrieval, and other tool API keys.
+- Configure Google AI Studio or an OpenAI-compatible image endpoint if you need image generation.
+- Saving writes local config files and hot-reloads the app.
 
-Models, tool groups, sandbox provider, checkpointer, memory, research gates, and quality policies are configured there. Use:
+The "Features" page is read-only and shows available Agents, MCP tools, and Skills. It does not provide create, delete, edit, enable, or disable controls.
+
+### Advanced Use: Config Files
+
+`config.yaml` and `extensions_config.json` remain available for scripts and deeper customization:
+
+- `config.yaml`: models, tool groups, sandbox provider, checkpointer, memory, research gates, and quality policies.
+- `extensions_config.json`: MCP server and skill enablement state.
+- `make config-upgrade`: merge new fields into an existing `config.yaml`.
+
+### Release Safety Check
+
+Your local `.env`, databases, memory, contexts, uploads, outputs, caches, and logs should not be published. Before pushing to a public repository, run:
 
 ```bash
-make config-upgrade
+make release-check
 ```
 
-to merge newly added fields into an existing config.
+If the check fails, fix the listed paths before publishing. The command does not delete local files.
 
-### Extensions Configuration
+### Public Deployment Passwords
 
-MCP servers and skill enablement live in `extensions_config.json`, or in the path specified by `MEDRIX_FLOW_EXTENSIONS_CONFIG_PATH`.
-
-The frontend "Features" page reads:
-
-```text
-GET /api/features
-```
-
-to show a read-only inventory of agents, MCP tools, and skills. Sensitive environment variables and headers are redacted to key names and configured status only.
+The open-source development build does not set a UI password by default. If you expose the service to the public internet, set `MEDRIX_FLOW_ENV=production`, `MEDRIX_FLOW_UI_PASSWORD`, and optionally `MEDRIX_GATEWAY_ADMIN_TOKEN`.
 
 ### Compatibility Identifiers
 
-Anaxa 3.0 is the user-facing product name. Some technical identifiers remain unchanged to avoid breaking existing scripts, runtime directories, environment variables, and imports:
+Anaxa 1.0 is the user-facing product name. Some technical identifiers remain unchanged to avoid breaking existing scripts, runtime directories, environment variables, and imports:
 
 - Python import package: `medrix_flow`
 - Compatibility names in Python distribution and workspace packages
@@ -279,62 +313,6 @@ Anaxa 3.0 is the user-facing product name. Some technical identifiers remain unc
 - Some Docker container, Compose project, and cleanup prefixes
 
 These are compatibility identifiers, not the new product brand.
-
-## API Overview
-
-### Feature Inventory
-
-| Route | Description |
-|---|---|
-| `GET /api/features` | Read-only aggregate of agents, MCP tools, and skills |
-
-### Academic Research
-
-| Route | Description |
-|---|---|
-| `POST /api/academic/projects` | Create or reuse an academic project |
-| `POST /api/academic/projects/{project_id}/ingest` | Retrieve, normalize, deduplicate, and build an evidence pool |
-| `POST /api/academic/projects/{project_id}/synthesize` | Generate report, references, evidence map, and audit |
-| `GET /api/academic/projects/{project_id}` | Read the project snapshot |
-| `GET /api/academic/projects/{project_id}/references` | Export references |
-| `GET /api/academic/projects/{project_id}/graph` | Read the literature/evidence graph |
-
-### Research Quest
-
-| Route | Description |
-|---|---|
-| `GET /api/research/quests` | List research quests |
-| `POST /api/research/quests` | Create a research quest |
-| `GET /api/research/quests/{quest_id}` | Read the quest snapshot |
-| `POST /api/research/quests/{quest_id}/advance` | Advance one lifecycle stage |
-| `POST /api/research/quests/{quest_id}/gate` | Record a human gate decision |
-| `GET /api/research/quests/{quest_id}/evidence` | Read evidence mappings |
-| `GET /api/research/quests/{quest_id}/experiments` | Read linked experiments |
-| `GET /api/research/quests/{quest_id}/manuscript` | Read the manuscript workspace |
-
-### Experiments
-
-| Route | Description |
-|---|---|
-| `POST /api/experiments/projects` | Create an experiment project |
-| `POST /api/experiments/projects/{project_id}/execute` | Execute the experiment workflow |
-| `POST /api/experiments/projects/{project_id}/export` | Export the experiment bundle |
-| `GET /api/experiments/projects/{project_id}` | Read the experiment project |
-| `GET /api/experiments/projects/{project_id}/artifacts` | Read experiment artifacts |
-
-### Threads, Runs, Files
-
-| Route | Description |
-|---|---|
-| `GET /api/threads/{thread_id}/runs` | List runs for a thread |
-| `POST /api/threads/{thread_id}/runs/{run_id}/cancel` | Cancel a run |
-| `GET /api/threads/{thread_id}/runs/{run_id}/messages` | Read run messages |
-| `POST /api/threads/{thread_id}/uploads` | Upload files into a thread |
-| `GET /api/threads/{thread_id}/uploads/list` | List uploaded files |
-| `GET /api/threads/{thread_id}/artifacts` | List output artifacts |
-| `GET /api/threads/{thread_id}/artifacts/{path}` | Read or download an artifact |
-| `GET /api/threads/{thread_id}/memory` | Read private memory for the current thread |
-| `POST /api/threads/{thread_id}/memory/reload` | Reload private memory for the current thread |
 
 ## Built-In Tools and Skills
 

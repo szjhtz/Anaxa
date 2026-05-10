@@ -8,8 +8,12 @@ import { I18nProvider } from "@/core/i18n/context";
 import { detectLocaleServer } from "@/core/i18n/server";
 
 export const metadata: Metadata = {
-  title: "MedrixFlow",
-  description: "A LangChain-based framework for building super agents.",
+  title: "Anaxa",
+  description: "An auditable research workspace for agent-assisted scientific workflows.",
+  applicationName: "Anaxa",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default async function RootLayout({
