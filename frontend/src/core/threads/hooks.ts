@@ -65,6 +65,13 @@ function isModelNotConfiguredError(error: unknown): boolean {
   );
 }
 
+const VISUAL_OUTPUT_INTENT_PATTERN =
+  /(\b(chart|charts|graph|graphs|plot|plots|dashboard|ppt|pptx|slides?|presentation|image|images|illustration|diagram|flowchart|wireframe|ui|ux|frontend|website|webpage|landing page|visuali[sz]e|visualization|infographic)\b|图表|作图|画图|绘图|可视化|仪表盘|看板|幻灯片|演示文稿|PPT|图片|图像|插图|流程图|架构图|界面|前端|网页|网站|海报)/i;
+
+function hasVisualOutputIntent(text: string): boolean {
+  return VISUAL_OUTPUT_INTENT_PATTERN.test(text);
+}
+
 export function useThreadStream({
   threadId,
   context,
@@ -598,6 +605,10 @@ export function useThreadStream({
               thinking_enabled: context.mode !== "flash",
               is_plan_mode: context.mode === "pro" || context.mode === "ultra",
               subagent_enabled: context.mode === "ultra",
+              visual_output_intent:
+                Boolean(extraContext?.visual_output_intent) ||
+                Boolean(context.visual_output_intent) ||
+                hasVisualOutputIntent(text),
               reasoning_effort:
                 context.reasoning_effort ??
                 (context.mode === "ultra"

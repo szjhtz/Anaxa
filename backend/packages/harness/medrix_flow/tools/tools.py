@@ -8,8 +8,10 @@ from medrix_flow.tools.builtins import (
     academic_research_tool,
     ask_clarification_tool,
     citation_audit_tool,
+    dataset_benchmark_discovery_tool,
     experiment_lab_tool,
     manuscript_export_tool,
+    matlab_execution_tool,
     present_file_tool,
     research_assistant_tool,
     task_tool,
@@ -26,8 +28,10 @@ BUILTIN_TOOLS = [
     ask_clarification_tool,
     citation_audit_tool,
     manuscript_export_tool,
+    dataset_benchmark_discovery_tool,
     academic_research_tool,
     experiment_lab_tool,
+    matlab_execution_tool,
     research_assistant_tool,
 ]
 
@@ -42,6 +46,7 @@ def get_available_tools(
     include_mcp: bool = True,
     model_name: str | None = None,
     subagent_enabled: bool = False,
+    visual_output_intent: bool = False,
 ) -> list[BaseTool]:
     """Get all available tools from config.
 
@@ -53,6 +58,7 @@ def get_available_tools(
         include_mcp: Whether to include tools from MCP servers (default: True).
         model_name: Optional model name to determine if vision tools should be included.
         subagent_enabled: Whether to include subagent tools (task, task_status).
+        visual_output_intent: Whether the current request is expected to produce visual output.
 
     Returns:
         List of available tools.
@@ -78,16 +84,16 @@ def get_available_tools(
         builtin_tools.append(view_image_tool)
         logger.info(f"Including view_image_tool for model '{model_name}' (supports_vision=True)")
 
-    # Add visual_quality_check_tool when any visual skill is enabled
+    # Add visual quality tools only when the current request is visual.
     try:
         from medrix_flow.agents.lead_agent.prompt_enhancements import VISUAL_SKILL_NAMES
         from medrix_flow.skills import load_skills
 
         enabled_skill_names = {s.name for s in load_skills(enabled_only=True)}
-        if enabled_skill_names & VISUAL_SKILL_NAMES:
+        if visual_output_intent and enabled_skill_names & VISUAL_SKILL_NAMES:
             builtin_tools.append(visual_quality_check_tool)
             builtin_tools.append(visual_refinement_check_tool)
-            logger.info("Including visual_quality_check_tool and visual_refinement_check_tool (visual skills active)")
+            logger.info("Including visual_quality_check_tool and visual_refinement_check_tool (visual output intent)")
     except Exception as e:
         logger.debug(f"Skipping visual_quality_check_tool: {e}")
 

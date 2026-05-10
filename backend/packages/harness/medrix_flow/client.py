@@ -195,6 +195,7 @@ class MedrixFlowClient:
             "reasoning_effort": overrides.get("reasoning_effort", self._reasoning_effort),
             "is_plan_mode": overrides.get("plan_mode", self._plan_mode),
             "subagent_enabled": overrides.get("subagent_enabled", self._subagent_enabled),
+            "visual_output_intent": overrides.get("visual_output_intent", False),
         }
         return RunnableConfig(
             configurable=configurable,
@@ -210,6 +211,7 @@ class MedrixFlowClient:
             cfg.get("reasoning_effort"),
             cfg.get("is_plan_mode"),
             cfg.get("subagent_enabled"),
+            cfg.get("visual_output_intent"),
             cfg.get("thread_id"),
             _thread_memory_mtime(cfg.get("thread_id")),
         )
@@ -221,6 +223,7 @@ class MedrixFlowClient:
         reasoning_effort = cfg.get("reasoning_effort")
         model_name = cfg.get("model_name")
         subagent_enabled = cfg.get("subagent_enabled", False)
+        visual_output_intent = bool(cfg.get("visual_output_intent", False))
         max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
         thread_id = cfg.get("thread_id")
 
@@ -230,13 +233,18 @@ class MedrixFlowClient:
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
             ),
-            "tools": self._get_tools(model_name=model_name, subagent_enabled=subagent_enabled),
+            "tools": self._get_tools(
+                model_name=model_name,
+                subagent_enabled=subagent_enabled,
+                visual_output_intent=visual_output_intent,
+            ),
             "middleware": _build_middlewares(config, model_name=model_name, agent_name=self._agent_name),
             "system_prompt": apply_prompt_template(
                 subagent_enabled=subagent_enabled,
                 max_concurrent_subagents=max_concurrent_subagents,
                 agent_name=self._agent_name,
                 thread_id=thread_id,
+                visual_output_intent=visual_output_intent,
             ),
             "state_schema": ThreadState,
         }
@@ -263,11 +271,15 @@ class MedrixFlowClient:
         )
 
     @staticmethod
-    def _get_tools(*, model_name: str | None, subagent_enabled: bool):
+    def _get_tools(*, model_name: str | None, subagent_enabled: bool, visual_output_intent: bool = False):
         """Lazy import to avoid circular dependency at module level."""
         from medrix_flow.tools import get_available_tools
 
-        return get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled)
+        return get_available_tools(
+            model_name=model_name,
+            subagent_enabled=subagent_enabled,
+            visual_output_intent=visual_output_intent,
+        )
 
     @staticmethod
     def _serialize_message(msg) -> dict:

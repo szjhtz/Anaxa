@@ -55,6 +55,7 @@ describe("RunStatusIndicator", () => {
   });
 
   it("shows reconnecting state when backend run remains active", async () => {
+    const now = new Date().toISOString();
     mocks.listThreadRuns.mockResolvedValue([
       {
         run_id: "run-1",
@@ -63,8 +64,8 @@ describe("RunStatusIndicator", () => {
         metadata: {},
         kwargs: {},
         multitask_strategy: "reject",
-        created_at: "2026-05-09T00:00:00Z",
-        updated_at: "2026-05-09T00:01:00Z",
+        created_at: now,
+        updated_at: now,
       },
     ]);
 
@@ -81,6 +82,34 @@ describe("RunStatusIndicator", () => {
       await screen.findByText("Backend run is still active. Reconnecting stream..."),
     ).toBeInTheDocument();
     expect(screen.getByTestId("run-status-indicator")).toHaveTextContent("Last event");
+  });
+
+  it("hides stale active runs when the stream is no longer active", async () => {
+    mocks.listThreadRuns.mockResolvedValue([
+      {
+        run_id: "run-stale",
+        thread_id: "thread-1",
+        status: "pending",
+        metadata: {},
+        kwargs: {},
+        multitask_strategy: "reject",
+        created_at: "2020-01-01T00:00:00Z",
+        updated_at: "2020-01-01T00:01:00Z",
+      },
+    ]);
+
+    render(
+      <RunStatusIndicator
+        threadId="thread-1"
+        currentRunId={null}
+        streaming={false}
+      />,
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("run-status-indicator")).not.toBeInTheDocument();
+    });
   });
 
   it("shows terminal error and interrupted states but hides successful runs", async () => {

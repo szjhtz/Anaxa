@@ -5,7 +5,9 @@ description: >-
   flow, flowchart, sequence, agent/memory, or concept map - and export as
   SVG+PNG. Trigger on: "画图" "帮我画" "生成图" "做个图" "架构图" "流程图"
   "可视化一下" "出图" "generate diagram" "draw diagram" "visualize" or any
-  system/flow description the user wants illustrated.
+  system/flow description the user wants illustrated. Do not use for real data
+  charts, statistical plots, or experiment result figures; route those to chart
+  or validated plotting workflows.
 ---
 
 # Fireworks Tech Graph
@@ -87,7 +89,7 @@ python3 ./scripts/generate-from-template.py architecture ./output/arch.svg '{"ti
 1. **Classify** the diagram type (see Diagram Types below)
 2. **Extract structure** — identify layers, nodes, edges, flows, and semantic groups from user description
 3. **Plan layout** — apply the layout rules for the diagram type
-4. **Load style reference** — always load `references/style-1-flat-icon.md` unless user specifies another; load the matching `references/style-N.md` for exact color tokens and SVG patterns
+4. **Load style reference** — load `references/style-1-flat-icon.md` as the default only after this skill is selected, unless user specifies another; load the matching `references/style-N.md` for exact color tokens and SVG patterns
 5. **Map nodes to shapes** — use Shape Vocabulary below
 6. **Check icon needs** — load `references/icons.md` for known products
 7. **Write SVG** with adaptive strategy (see SVG Generation Strategy below)

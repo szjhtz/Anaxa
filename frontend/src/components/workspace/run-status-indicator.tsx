@@ -3,27 +3,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangleIcon, CircleStopIcon } from "lucide-react";
 
-import { listThreadRuns, type RunData } from "@/core/api/runs";
+import { listThreadRuns } from "@/core/api/runs";
 import { useI18n } from "@/core/i18n/hooks";
+import { isRunActive, resolveThreadRun } from "@/core/runs/status";
 import { cn } from "@/lib/utils";
 
 import { StreamingIndicator } from "./streaming-indicator";
-
-const ACTIVE_RUN_STATUSES = new Set(["pending", "running"]);
 
 function formatUpdatedAt(value?: string): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function resolveRun(runs: RunData[] | undefined, currentRunId?: string | null): RunData | undefined {
-  if (!runs || runs.length === 0) return undefined;
-  if (currentRunId) {
-    return runs.find((run) => run.run_id === currentRunId) ?? runs[0];
-  }
-  return runs[0];
 }
 
 export function RunStatusIndicator({
@@ -47,9 +38,9 @@ export function RunStatusIndicator({
     retry: 1,
   });
 
-  const run = resolveRun(runs, currentRunId);
+  const run = resolveThreadRun(runs, currentRunId);
   const status = run?.status;
-  const active = Boolean(status && ACTIVE_RUN_STATUSES.has(status));
+  const active = isRunActive(run);
   const showError = Boolean(currentRunId) && !streaming && status === "error";
   const showInterrupted = Boolean(currentRunId) && !streaming && status === "interrupted";
 

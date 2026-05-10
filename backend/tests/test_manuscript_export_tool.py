@@ -154,6 +154,34 @@ def test_manuscript_export_blocks_unsupported_claim_map(tmp_path):
     assert "Unsupported claims: 1" in result.update["messages"][0].content
 
 
+def test_manuscript_export_blocks_literature_only_experimental_claim(tmp_path):
+    outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
+    outputs_dir.mkdir(parents=True)
+    claim_map = {
+        "claims": [
+            {
+                "claim": "The method outperforms the baseline on the benchmark.",
+                "support_status": "supported_by_literature",
+                "evidence": ["smith2024"],
+            }
+        ]
+    }
+
+    result = manuscript_export_tool_module.manuscript_export_tool.func(
+        runtime=_make_runtime(str(outputs_dir)),
+        tex_content=_tex(),
+        bibtex_content=_bib(),
+        claim_map_json=json.dumps(claim_map),
+        filename_stem="paper",
+        tool_call_id="tc-1",
+    )
+
+    audit = json.loads((outputs_dir / "citation_audit.json").read_text(encoding="utf-8"))
+    assert audit["unsupported_claims"] == ["The method outperforms the baseline on the benchmark."]
+    assert not (outputs_dir / "paper.pdf").exists()
+    assert "Unsupported claims: 1" in result.update["messages"][0].content
+
+
 def test_manuscript_export_blocks_author_process_notes(tmp_path):
     outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
     outputs_dir.mkdir(parents=True)

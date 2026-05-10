@@ -275,4 +275,50 @@ describe("ThreadDetailsTrigger", () => {
     fireEvent.click(filesTab);
     expect(await screen.findByText("scanned-only.txt")).toBeInTheDocument();
   });
+
+  it("does not show an active badge for stale pending runs", async () => {
+    mocks.cancelThreadRun.mockResolvedValue(undefined);
+    mocks.listThreadRuns.mockResolvedValue([
+      {
+        run_id: "run-stale",
+        thread_id: "thread-1",
+        assistant_id: "lead_agent",
+        status: "pending",
+        metadata: {},
+        kwargs: {},
+        multitask_strategy: "reject",
+        created_at: "2020-01-01T00:00:00Z",
+        updated_at: "2020-01-01T00:01:00Z",
+      },
+    ]);
+    mocks.getRunWorkflow.mockResolvedValue({
+      run: {
+        run_id: "run-stale",
+        thread_id: "thread-1",
+        assistant_id: "lead_agent",
+        status: "pending",
+        created_at: "2020-01-01T00:00:00Z",
+        updated_at: "2020-01-01T00:01:00Z",
+        last_event_at: null,
+      },
+      nodes: [],
+      edges: [],
+      events: [],
+      artifacts: [],
+      usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+      has_more: false,
+    });
+
+    render(
+      <ThreadDetailsTrigger threadId="thread-1" currentRunId={null} streaming={false} />,
+      { wrapper },
+    );
+
+    await screen.findByTestId("thread-details-trigger");
+    await vi.waitFor(() => {
+      expect(
+        screen.getByTestId("thread-details-trigger").querySelector(".animate-ping"),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

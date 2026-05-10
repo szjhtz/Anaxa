@@ -56,15 +56,28 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 _REVIEW_DELIVERABLE_TYPES = {
+    "experiment_design",
+    "experiment_report",
     "literature_review",
     "manuscript",
     "paper",
+    "paper_draft",
     "review",
     "review_article",
     "survey",
     "systematic_review",
 }
+_MANUSCRIPT_EVIDENCE_TYPES = [
+    "dataset",
+    "benchmark",
+    "metric",
+    "baseline",
+    "ablation",
+    "external validation",
+]
 _REVIEW_DELIVERABLE_HINTS = {
+    "experiment design",
+    "experiment report",
     "literature review",
     "manuscript",
     "paper draft",
@@ -688,6 +701,8 @@ class AcademicResearchService:
             metadata["min_reference_count"] = max(1, int(minimum))
             metadata["target_reference_count"] = max(int(target), metadata["min_reference_count"])
             metadata["min_core_paper_count"] = min(80, max(30, metadata["min_reference_count"] // 2))
+            current_evidence = metadata.get("required_evidence_types", [])
+            metadata["required_evidence_types"] = self._merge_text_lists(current_evidence, _MANUSCRIPT_EVIDENCE_TYPES)
         elif min_reference_count is not None:
             metadata["min_reference_count"] = max(1, int(min_reference_count))
         elif target_reference_count is not None:
@@ -932,6 +947,19 @@ class AcademicResearchService:
             cleaned.append(text)
             seen.add(key)
         return cleaned
+
+    @classmethod
+    def _merge_text_lists(cls, *values: Any) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            for item in cls._normalize_text_list(value):
+                key = item.lower()
+                if key in seen:
+                    continue
+                merged.append(item)
+                seen.add(key)
+        return merged
 
     @staticmethod
     def _paper_text(paper: PaperRecord) -> str:
@@ -1287,6 +1315,25 @@ class AcademicResearchService:
         return {
             "project_id": project.project_id,
             "topic": project.topic,
+            "evidence_classes": {
+                "literature": [
+                    {
+                        "paper_id": paper.paper_id,
+                        "title": paper.title,
+                        "year": paper.year,
+                        "provider": paper.provider,
+                        "source_url": paper.source_url,
+                        "doi": paper.doi,
+                    }
+                    for paper in papers
+                ],
+                "dataset_benchmark": self._dataset_benchmark_evidence(project, papers),
+                "experiment": [],
+            },
+            "claim_support_policy": (
+                "Manuscript experimental claims require dataset/benchmark or experiment artifact support. "
+                "Literature-only support should be labeled as background or hypothesis."
+            ),
             "outline": [
                 {
                     "node_id": node.node_id,
@@ -1307,6 +1354,34 @@ class AcademicResearchService:
                 for node in outline
             ],
         }
+
+    def _dataset_benchmark_evidence(self, project: ResearchProject, papers: list[PaperRecord]) -> list[dict[str, Any]]:
+        evidence: list[dict[str, Any]] = []
+        for paper in papers:
+            text = self._paper_text(paper).lower()
+            if not any(term in text for term in ("dataset", "benchmark", "leaderboard", "baseline", "metric", "ablation")):
+                continue
+            evidence.append(
+                {
+                    "paper_id": paper.paper_id,
+                    "paper_title": paper.title,
+                    "evidence_terms": [
+                        term
+                        for term in ("dataset", "benchmark", "leaderboard", "baseline", "metric", "ablation")
+                        if term in text
+                    ],
+                    "source_url": paper.source_url,
+                    "support_status": "literature_indicates_benchmark_or_dataset",
+                }
+            )
+        if (project.metadata or {}).get("review_quality_profile") and not evidence:
+            evidence.append(
+                {
+                    "support_status": "missing",
+                    "note": "No dataset or benchmark evidence was detected in the retained literature set.",
+                }
+            )
+        return evidence
 
     def _render_innovation_directions(self, papers: list[PaperRecord]) -> list[str]:
         bullets = []

@@ -4,22 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getRunWorkflow,
   listThreadRuns,
-  type RunData,
   type WorkflowSnapshot,
 } from "@/core/api/runs";
-
-const ACTIVE_STATUSES = new Set(["pending", "running"]);
-
-function resolveRun(runs: RunData[] | undefined, currentRunId?: string | null) {
-  if (!runs || runs.length === 0) return undefined;
-  if (currentRunId) {
-    return runs.find((run) => run.run_id === currentRunId) ?? runs[0];
-  }
-  return runs[0];
-}
+import { isRunActive, resolveThreadRun } from "@/core/runs/status";
 
 export function isWorkflowRunActive(status?: string | null) {
-  return Boolean(status && ACTIVE_STATUSES.has(status));
+  return status === "pending" || status === "running";
 }
 
 export function useThreadWorkflow({
@@ -43,8 +33,8 @@ export function useThreadWorkflow({
     retry: 1,
   });
 
-  const run = resolveRun(runsQuery.data, currentRunId);
-  const active = isWorkflowRunActive(run?.status);
+  const run = resolveThreadRun(runsQuery.data, currentRunId);
+  const active = isRunActive(run);
   const afterSeq = active ? lastSeq : undefined;
 
   const workflowQuery = useQuery<WorkflowSnapshot>({

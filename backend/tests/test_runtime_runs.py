@@ -287,6 +287,7 @@ def test_external_sideband_events_do_not_advance_checkpoint_materialization():
         )
 
         record = await service.require_run("thread-1", "run-sideband-1")
+        assert record.status is RunStatus.running
         assert record.persisted_message_count == 0
         assert record.messages_complete is False
 

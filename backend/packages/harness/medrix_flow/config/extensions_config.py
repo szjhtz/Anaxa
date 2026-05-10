@@ -66,6 +66,10 @@ class ExtensionsConfig(BaseModel):
     )
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
+    _SKILL_ALIASES = {
+        "claude-to-medrixflow": ("claude-to-medrix_flow",),
+    }
+
     @classmethod
     def resolve_config_path(cls, config_path: str | None = None) -> Path | None:
         """Resolve the extensions config file path.
@@ -193,6 +197,11 @@ class ExtensionsConfig(BaseModel):
             True if enabled, False otherwise
         """
         skill_config = self.skills.get(skill_name)
+        if skill_config is None:
+            for alias in self._SKILL_ALIASES.get(skill_name, ()):
+                skill_config = self.skills.get(alias)
+                if skill_config is not None:
+                    break
         if skill_config is None:
             # Default to enable for public & custom skill
             return skill_category in ("public", "custom")

@@ -163,6 +163,36 @@ def test_academic_service_synthesizes_exports_and_graph(tmp_path, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_manuscript_research_defaults_to_experimental_evidence_requirements(tmp_path, monkeypatch):
+    async def scenario() -> None:
+        monkeypatch.setenv("MEDRIX_FLOW_HOME", str(tmp_path))
+        paths_module._paths = None
+
+        db = SQLiteRuntimeDB(":memory:")
+        await db.connect()
+        repo = AcademicRepository(db)
+        await repo.setup()
+        service = AcademicResearchService(repo, adapters=[FakeAdapter("openalex", [])])
+
+        project = await service.create_project(thread_id="thread-manuscript", topic="medical AI benchmark paper")
+        updated = await service._apply_coverage_metadata(
+            project,
+            deliverable_type="manuscript",
+            min_reference_count=None,
+            target_reference_count=None,
+            required_topics=None,
+            required_evidence_types=None,
+        )
+
+        evidence_types = updated.metadata["required_evidence_types"]
+        assert {"dataset", "benchmark", "metric", "baseline", "ablation", "external validation"} <= set(evidence_types)
+        assert updated.metadata["review_quality_profile"] is True
+
+        await db.close()
+
+    asyncio.run(scenario())
+
+
 def test_academic_service_prefers_published_versions_and_exports_all_verified_references(tmp_path, monkeypatch):
     async def scenario() -> None:
         monkeypatch.setenv("MEDRIX_FLOW_HOME", str(tmp_path))
@@ -379,7 +409,10 @@ def test_academic_service_coverage_auto_repair_can_fill_review_reference_gap(tmp
                         year=2024,
                         venue="Journal of Repair Evidence",
                         doi=f"10.8200/repair-{start + idx}",
-                        abstract="A benchmark dataset and empirical result for agent evaluation frameworks review-quality coverage.",
+                        abstract=(
+                            "A benchmark dataset and empirical result for agent evaluation frameworks "
+                            "with metric reporting, baseline comparison, ablation, and external validation."
+                        ),
                     ).model_copy(update={"project_id": project_id, "paper_id": f"{project_id}:repair-{start + idx}"})
                     for idx in range(count)
                 ]

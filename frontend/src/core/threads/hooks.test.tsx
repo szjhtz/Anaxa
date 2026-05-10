@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createRunEvent: vi.fn(),
   updateSubtask: vi.fn(),
   toastError: vi.fn(),
+  submit: vi.fn(),
 }));
 
 let capturedOptions: Record<string, unknown> | null = null;
@@ -24,7 +25,7 @@ vi.mock("@langchain/langgraph-sdk/react", () => ({
       isThreadLoading: false,
       values: { title: "", messages: [], artifacts: [] },
       stop: vi.fn(),
-      submit: vi.fn(),
+      submit: mocks.submit,
     };
   }),
 }));
@@ -86,6 +87,7 @@ describe("useThreadStream", () => {
     mocks.createRunEvent.mockReset();
     mocks.updateSubtask.mockReset();
     mocks.toastError.mockReset();
+    mocks.submit.mockReset();
   });
 
   it("captures run_id from useStream metadata and sideband-registers it", async () => {
@@ -125,5 +127,59 @@ describe("useThreadStream", () => {
         reasoning_effort: undefined,
       },
     });
+  });
+
+  it("marks ordinary text requests as non-visual", async () => {
+    mocks.submit.mockResolvedValue(undefined);
+
+    const { result } = renderHook(
+      () =>
+        useThreadStream({
+          threadId: "thread-1",
+          context: {
+            mode: "flash",
+            model_name: undefined,
+            reasoning_effort: undefined,
+          },
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current[1]("thread-1", {
+        text: "帮我解释一下这个配置为什么报错",
+        files: [],
+      });
+    });
+
+    expect(mocks.submit).toHaveBeenCalledOnce();
+    expect(mocks.submit.mock.calls[0]?.[1]?.context.visual_output_intent).toBe(false);
+  });
+
+  it("marks explicit visual requests as visual output intent", async () => {
+    mocks.submit.mockResolvedValue(undefined);
+
+    const { result } = renderHook(
+      () =>
+        useThreadStream({
+          threadId: "thread-1",
+          context: {
+            mode: "flash",
+            model_name: undefined,
+            reasoning_effort: undefined,
+          },
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current[1]("thread-1", {
+        text: "帮我画一个架构图",
+        files: [],
+      });
+    });
+
+    expect(mocks.submit).toHaveBeenCalledOnce();
+    expect(mocks.submit.mock.calls[0]?.[1]?.context.visual_output_intent).toBe(true);
   });
 });

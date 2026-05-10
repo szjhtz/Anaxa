@@ -16,6 +16,21 @@ def test_experiment_lab_skill_documents_iterative_experiment_loop():
     assert "baseline" in text
     assert "primary metric" in text
     assert "`keep`, `discard`, or `crash`" in text
+    assert "experiment_contract.json" in text
+    assert "claim_support_matrix.json" in text
+    assert "dataset_benchmark_discovery" in text
+    assert "matlab_execution" in text
+
+
+def test_dataset_benchmark_and_matlab_skills_are_available():
+    root = Path(__file__).resolve().parents[2]
+    benchmark_text = (root / "skills/public/dataset-benchmark-discovery/SKILL.md").read_text(encoding="utf-8")
+    matlab_text = (root / "skills/public/matlab-execution/SKILL.md").read_text(encoding="utf-8")
+
+    assert "dataset_benchmark_discovery" in benchmark_text
+    assert "license" in benchmark_text
+    assert "matlab_execution" in matlab_text
+    assert "GUI" in matlab_text
 
 
 def test_empirical_research_methods_skill_is_available_and_routed():

@@ -382,6 +382,14 @@ class ExperimentService:
         )
         if empirical_contract is not None:
             export_files = [*export_files, empirical_contract]
+        evidence_artifacts = self._write_experiment_evidence_artifacts(
+            export_dir=export_dir,
+            project=project,
+            run=run,
+            result=result,
+            analysis_type=result["analysis_type"],
+        )
+        export_files = [*export_files, *evidence_artifacts]
         artifacts = [
             ExperimentArtifact(
                 artifact_id=f"artifact-{uuid4().hex[:12]}",
@@ -420,6 +428,218 @@ class ExperimentService:
             bundle=bundle,
             summary=result["summary"],
         )
+
+    def _write_experiment_evidence_artifacts(
+        self,
+        *,
+        export_dir: Path,
+        project: ExperimentProject,
+        run: ExperimentRun,
+        result: dict[str, Any],
+        analysis_type: str,
+    ) -> list[Path]:
+        metadata = project.metadata or {}
+        metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else {}
+        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+        dataset_paths = [str(path) for path in self._resolve_dataset_paths(project)]
+        primary_metric = self._primary_metric(metrics, analysis_type)
+        experiment_contract = {
+            "project_id": project.project_id,
+            "run_id": run.run_id,
+            "topic": project.topic,
+            "domain": project.domain,
+            "analysis_type": analysis_type,
+            "dataset_paths": dataset_paths,
+            "dataset_count": len(project.dataset_ids),
+            "target_column": summary.get("target_column") or metadata.get("target_column"),
+            "splits": {
+                "strategy": "train_test_split" if analysis_type in {"classification", "regression"} else "workflow_specific_or_not_applicable",
+                "random_seed": 42 if analysis_type in {"classification", "regression", "clustering", "dimensionality_reduction"} else None,
+            },
+            "preprocessing": self._preprocessing_contract(analysis_type),
+            "baseline": metadata.get("baseline") or result.get("method_key"),
+            "proposed_method": metadata.get("proposed_method"),
+            "ablation_variables": metadata.get("ablation_variables", []),
+            "metrics": sorted(metrics.keys()),
+            "primary_metric": primary_metric,
+            "seeds_or_repeats": metadata.get("seeds_or_repeats", [42]),
+            "statistical_tests": metadata.get("statistical_tests", []),
+            "robustness_checks": metadata.get("robustness_checks", []),
+            "error_analysis": "Generated from predictions/residuals where available.",
+            "compute_budget": metadata.get("compute_budget"),
+            "claim_gate": "Do not state manuscript-level experimental superiority unless claim_support_matrix.json marks the claim supported_by_experiment.",
+        }
+        baseline_results = {
+            "project_id": project.project_id,
+            "run_id": run.run_id,
+            "baseline": experiment_contract["baseline"],
+            "analysis_type": analysis_type,
+            "metrics": metrics,
+            "notes": result.get("notes"),
+        }
+        ablation_results = {
+            "project_id": project.project_id,
+            "run_id": run.run_id,
+            "status": "not_recorded" if not metadata.get("ablation_results") else "recorded",
+            "ablation_variables": experiment_contract["ablation_variables"],
+            "results": metadata.get("ablation_results", []),
+            "manuscript_rule": "If no ablation result is recorded, write ablations as planned work or limitations, not completed evidence.",
+        }
+        robustness_results = {
+            "project_id": project.project_id,
+            "run_id": run.run_id,
+            "status": "not_recorded" if not metadata.get("robustness_results") else "recorded",
+            "checks": experiment_contract["robustness_checks"],
+            "results": metadata.get("robustness_results", []),
+        }
+        claim_support_matrix = self._claim_support_matrix(
+            project=project,
+            run=run,
+            metrics=metrics,
+            primary_metric=primary_metric,
+            ablation_results=ablation_results,
+            robustness_results=robustness_results,
+        )
+        error_analysis = self._render_error_analysis(
+            project=project,
+            analysis_type=analysis_type,
+            metrics=metrics,
+            summary=summary,
+            primary_metric=primary_metric,
+        )
+
+        files = {
+            "experiment_contract.json": experiment_contract,
+            "baseline_results.json": baseline_results,
+            "ablation_results.json": ablation_results,
+            "robustness_results.json": robustness_results,
+            "claim_support_matrix.json": claim_support_matrix,
+        }
+        paths: list[Path] = []
+        for filename, payload in files.items():
+            path = export_dir / filename
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            paths.append(path)
+        error_path = export_dir / "error_analysis.md"
+        error_path.write_text(error_analysis, encoding="utf-8")
+        paths.append(error_path)
+        return paths
+
+    @staticmethod
+    def _preprocessing_contract(analysis_type: str) -> list[str]:
+        if analysis_type in {"classification", "regression"}:
+            return ["numeric median imputation", "numeric standard scaling", "categorical most-frequent imputation", "one-hot encoding"]
+        if analysis_type in {"clustering", "dimensionality_reduction"}:
+            return ["numeric feature selection", "median imputation", "standard scaling"]
+        if analysis_type == "bulk_expression":
+            return ["expression matrix normalization", "log transform where applicable", "metadata alignment"]
+        if analysis_type == "single_cell":
+            return ["single-cell QC", "normalization", "embedding and clustering"]
+        return ["workflow-specific preprocessing"]
+
+    @staticmethod
+    def _primary_metric(metrics: dict[str, Any], analysis_type: str) -> dict[str, Any] | None:
+        preferred = {
+            "classification": ["auroc", "f1", "accuracy"],
+            "regression": ["r2", "rmse", "mae"],
+            "clustering": ["silhouette_score"],
+            "dimensionality_reduction": ["explained_variance_ratio"],
+            "bulk_expression": ["significant_gene_count"],
+            "single_cell": ["cluster_count"],
+        }.get(analysis_type, list(metrics.keys()))
+        for key in preferred:
+            if key in metrics:
+                return {"name": key, "value": metrics[key]}
+        return None
+
+    @staticmethod
+    def _claim_support_matrix(
+        *,
+        project: ExperimentProject,
+        run: ExperimentRun,
+        metrics: dict[str, Any],
+        primary_metric: dict[str, Any] | None,
+        ablation_results: dict[str, Any],
+        robustness_results: dict[str, Any],
+    ) -> dict[str, Any]:
+        claims: list[dict[str, Any]] = []
+        if primary_metric is not None:
+            claims.append(
+                {
+                    "claim": f"The executed experiment produced {primary_metric['name']}={primary_metric['value']}.",
+                    "support_status": "supported_by_experiment",
+                    "evidence": ["metrics.json", "baseline_results.json"],
+                    "artifact_path": "metrics.json",
+                }
+            )
+        else:
+            claims.append(
+                {
+                    "claim": "The experiment has a primary quantitative metric.",
+                    "support_status": "unsupported",
+                    "evidence": [],
+                }
+            )
+        claims.append(
+            {
+                "claim": "The method is superior to alternatives.",
+                "support_status": "unsupported",
+                "evidence": [],
+                "reason": "No matched baseline comparison beyond the executed workflow was recorded.",
+            }
+        )
+        claims.append(
+            {
+                "claim": "Ablation results support the contribution.",
+                "support_status": "supported_by_experiment" if ablation_results.get("status") == "recorded" else "unsupported",
+                "evidence": ["ablation_results.json"] if ablation_results.get("status") == "recorded" else [],
+            }
+        )
+        claims.append(
+            {
+                "claim": "Robustness checks support the conclusion.",
+                "support_status": "supported_by_experiment" if robustness_results.get("status") == "recorded" else "unsupported",
+                "evidence": ["robustness_results.json"] if robustness_results.get("status") == "recorded" else [],
+            }
+        )
+        return {
+            "project_id": project.project_id,
+            "run_id": run.run_id,
+            "policy": "Final manuscripts must weaken, remove, or label unsupported experimental claims as limitations or planned work.",
+            "metrics_available": sorted(metrics.keys()),
+            "claims": claims,
+        }
+
+    @staticmethod
+    def _render_error_analysis(
+        *,
+        project: ExperimentProject,
+        analysis_type: str,
+        metrics: dict[str, Any],
+        summary: dict[str, Any],
+        primary_metric: dict[str, Any] | None,
+    ) -> str:
+        lines = [
+            "# Error Analysis",
+            "",
+            f"- Project: `{project.project_id}`",
+            f"- Topic: {project.topic}",
+            f"- Analysis type: {analysis_type}",
+            f"- Primary metric: {primary_metric['name']}={primary_metric['value']}" if primary_metric else "- Primary metric: not recorded",
+            f"- Available metrics: {', '.join(sorted(metrics.keys())) or 'none'}",
+            "",
+            "## Interpretation Boundaries",
+            "",
+            "- Treat this file as a diagnostic scaffold unless task-specific error slices are provided.",
+            "- Do not claim superiority, robustness, or broad generalization from this run alone.",
+            "- Use predictions, residuals, confusion matrices, or marker tables in `tables/` for concrete subgroup/error discussion.",
+            "",
+            "## Dataset Summary",
+            "",
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            "",
+        ]
+        return "\n".join(lines)
 
     def _run_cs_ai(
         self,

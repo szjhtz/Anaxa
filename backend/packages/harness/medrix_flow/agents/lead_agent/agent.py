@@ -271,16 +271,18 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     # LoopDetectionMiddleware — detect and break repetitive tool call loops
     middlewares.append(LoopDetectionMiddleware())
 
-    # VisualQualityMiddleware — enforce quality check before presenting visual output
-    # Only added when visual skills are enabled
+    # VisualQualityMiddleware — enforce quality check before presenting visual output.
+    # Only added when the current request is expected to produce visual output.
     try:
         from medrix_flow.agents.lead_agent.prompt_enhancements import VISUAL_SKILL_NAMES
         from medrix_flow.skills import load_skills
 
+        cfg = config.get("configurable", {})
+        visual_output_intent = bool(cfg.get("visual_output_intent", False)) and not bool(cfg.get("is_bootstrap", False))
         enabled_skill_names = {s.name for s in load_skills(enabled_only=True)}
-        if enabled_skill_names & VISUAL_SKILL_NAMES:
+        if visual_output_intent and enabled_skill_names & VISUAL_SKILL_NAMES:
             middlewares.append(VisualQualityMiddleware())
-            logger.info("Including VisualQualityMiddleware (visual skills active)")
+            logger.info("Including VisualQualityMiddleware (visual output intent)")
     except Exception as e:
         logger.debug(f"Skipping VisualQualityMiddleware: {e}")
 
@@ -309,6 +311,7 @@ def make_lead_agent(config: RunnableConfig):
     subagent_enabled = cfg.get("subagent_enabled", False)
     max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
     is_bootstrap = cfg.get("is_bootstrap", False)
+    visual_output_intent = bool(cfg.get("visual_output_intent", False)) and not is_bootstrap
     agent_name = cfg.get("agent_name")
     thread_id = cfg.get("thread_id")
     thread_memory_mtime = _thread_memory_mtime(thread_id)
@@ -360,13 +363,18 @@ def make_lead_agent(config: RunnableConfig):
         # Special bootstrap agent with minimal prompt for initial custom agent creation flow
         return create_agent(
             model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled),
-            tools=get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled) + [setup_agent],
+            tools=get_available_tools(
+                model_name=model_name,
+                subagent_enabled=subagent_enabled,
+                visual_output_intent=False,
+            ) + [setup_agent],
             middleware=_build_middlewares(config, model_name=model_name),
             system_prompt=apply_prompt_template(
                 subagent_enabled=subagent_enabled,
                 max_concurrent_subagents=max_concurrent_subagents,
                 available_skills=set(["bootstrap"]),
                 thread_id=thread_id,
+                visual_output_intent=False,
             ),
             state_schema=ThreadState,
         )
@@ -374,13 +382,19 @@ def make_lead_agent(config: RunnableConfig):
     # Default lead agent (unchanged behavior)
     return create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort),
-        tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled),
+        tools=get_available_tools(
+            model_name=model_name,
+            groups=agent_config.tool_groups if agent_config else None,
+            subagent_enabled=subagent_enabled,
+            visual_output_intent=visual_output_intent,
+        ),
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
         system_prompt=apply_prompt_template(
             subagent_enabled=subagent_enabled,
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=agent_name,
             thread_id=thread_id,
+            visual_output_intent=visual_output_intent,
         ),
         state_schema=ThreadState,
     )

@@ -15,6 +15,27 @@ _LATEX_CITE_RE = re.compile(
 )
 _UNESCAPED_COMMENT_RE = re.compile(r"(?<!\\)%.*")
 _IGNORED_BIBTEX_ENTRY_TYPES = {"comment", "preamble", "string"}
+_EXPERIMENTAL_CLAIM_TERMS = {
+    "ablation",
+    "accuracy",
+    "auc",
+    "auroc",
+    "baseline",
+    "benchmark",
+    "experiment",
+    "experimental",
+    "f1",
+    "metric",
+    "outperform",
+    "performance",
+    "result",
+    "robust",
+    "sota",
+    "state-of-the-art",
+    "superior",
+}
+_SUPPORTED_STATUSES = {"supported", "verified", "supported_by_experiment", "supported_by_literature"}
+_EXPERIMENT_STATUSES = {"supported_by_experiment", "experiment-supported", "experiment_supported"}
 
 
 @dataclass(frozen=True)
@@ -114,12 +135,29 @@ def find_unsupported_claims(claims: Any) -> list[str]:
             continue
         claim_text = str(item.get("claim") or item.get("text") or item.get("statement") or "").strip()
         status = str(item.get("support_status") or item.get("status") or "").strip().lower()
-        evidence = item.get("evidence") or item.get("citations") or item.get("citation_keys")
-        lacks_evidence = evidence in (None, "", []) and status not in {"supported", "verified"}
+        evidence = item.get("evidence") or item.get("citations") or item.get("citation_keys") or item.get("artifact_path")
+        evidence_type = str(item.get("evidence_type") or item.get("support_type") or "").strip().lower()
+        experimental_claim = _is_experimental_claim(claim_text, item)
+        lacks_evidence = evidence in (None, "", []) and status not in _SUPPORTED_STATUSES
+        literature_only_experimental_claim = experimental_claim and status not in _EXPERIMENT_STATUSES and evidence_type != "experiment"
         if status in {"unsupported", "contradicted", "missing"} or lacks_evidence:
+            unsupported.append(claim_text or json.dumps(item, ensure_ascii=False, sort_keys=True))
+        elif literature_only_experimental_claim:
             unsupported.append(claim_text or json.dumps(item, ensure_ascii=False, sort_keys=True))
 
     return unsupported
+
+
+def _is_experimental_claim(claim_text: str, item: dict[str, Any]) -> bool:
+    text = " ".join(
+        [
+            claim_text,
+            str(item.get("section") or ""),
+            str(item.get("claim_type") or ""),
+            str(item.get("evidence_type") or ""),
+        ]
+    ).lower()
+    return any(term in text for term in _EXPERIMENTAL_CLAIM_TERMS)
 
 
 def find_author_notes(source: str) -> list[str]:

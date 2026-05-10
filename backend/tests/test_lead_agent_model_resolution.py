@@ -170,3 +170,110 @@ def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     )
 
     assert any(isinstance(m, lead_agent_module.ViewImageMiddleware) for m in middlewares)
+
+
+def test_build_middlewares_adds_visual_quality_only_for_visual_intent(monkeypatch):
+    app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+
+    class _Skill:
+        name = "chart-visualization"
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda: None)
+    monkeypatch.setattr(lead_agent_module, "_create_todo_list_middleware", lambda is_plan_mode: None)
+    monkeypatch.setattr("medrix_flow.skills.load_skills", lambda enabled_only=True: [_Skill()])
+
+    non_visual = lead_agent_module._build_middlewares(
+        {"configurable": {"is_plan_mode": False, "visual_output_intent": False}},
+        model_name="safe-model",
+    )
+    visual = lead_agent_module._build_middlewares(
+        {"configurable": {"is_plan_mode": False, "visual_output_intent": True}},
+        model_name="safe-model",
+    )
+    bootstrap = lead_agent_module._build_middlewares(
+        {"configurable": {"is_plan_mode": False, "is_bootstrap": True, "visual_output_intent": True}},
+        model_name="safe-model",
+    )
+
+    assert not any(isinstance(m, lead_agent_module.VisualQualityMiddleware) for m in non_visual)
+    assert any(isinstance(m, lead_agent_module.VisualQualityMiddleware) for m in visual)
+    assert not any(isinstance(m, lead_agent_module.VisualQualityMiddleware) for m in bootstrap)
+
+
+def test_make_lead_agent_passes_visual_intent_to_tools_and_prompt(monkeypatch):
+    app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+
+    import medrix_flow.tools as tools_module
+
+    captured_tools: dict[str, object] = {}
+    captured_prompt: dict[str, object] = {}
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(
+        tools_module,
+        "get_available_tools",
+        lambda **kwargs: captured_tools.update(kwargs) or [],
+    )
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None: [])
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: object())
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "apply_prompt_template",
+        lambda **kwargs: captured_prompt.update(kwargs) or "prompt",
+    )
+
+    lead_agent_module.make_lead_agent(
+        {
+            "configurable": {
+                "model_name": "safe-model",
+                "thinking_enabled": False,
+                "is_plan_mode": False,
+                "subagent_enabled": False,
+                "visual_output_intent": True,
+            }
+        }
+    )
+
+    assert captured_tools["visual_output_intent"] is True
+    assert captured_prompt["visual_output_intent"] is True
+
+
+def test_bootstrap_agent_suppresses_visual_intent(monkeypatch):
+    app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+
+    import medrix_flow.tools as tools_module
+
+    captured_tools: dict[str, object] = {}
+    captured_prompt: dict[str, object] = {}
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(
+        tools_module,
+        "get_available_tools",
+        lambda **kwargs: captured_tools.update(kwargs) or [],
+    )
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None: [])
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: object())
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "apply_prompt_template",
+        lambda **kwargs: captured_prompt.update(kwargs) or "prompt",
+    )
+
+    lead_agent_module.make_lead_agent(
+        {
+            "configurable": {
+                "model_name": "safe-model",
+                "thinking_enabled": False,
+                "is_bootstrap": True,
+                "visual_output_intent": True,
+            }
+        }
+    )
+
+    assert captured_tools["visual_output_intent"] is False
+    assert captured_prompt["available_skills"] == {"bootstrap"}
+    assert captured_prompt["visual_output_intent"] is False

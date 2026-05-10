@@ -64,6 +64,20 @@ def test_experiment_service_classification_bundle(tmp_path):
     assert result.bundle.figure_count >= 2
     assert any(path.endswith("confusion_matrix.png") for path in result.bundle.export_files)
     assert any(path.endswith("metrics.json") for path in result.bundle.export_files)
+    assert any(path.endswith("experiment_contract.json") for path in result.bundle.export_files)
+    assert any(path.endswith("baseline_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("ablation_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("robustness_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("error_analysis.md") for path in result.bundle.export_files)
+    assert any(path.endswith("claim_support_matrix.json") for path in result.bundle.export_files)
+    claim_path = next(
+        outputs / path.removeprefix("/mnt/user-data/outputs/")
+        for path in result.bundle.export_files
+        if path.endswith("claim_support_matrix.json")
+    )
+    claim_matrix = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert any(item["support_status"] == "supported_by_experiment" for item in claim_matrix["claims"])
+    assert any(item["support_status"] == "unsupported" and "superior" in item["claim"] for item in claim_matrix["claims"])
     asyncio.run(db.close())
 
 

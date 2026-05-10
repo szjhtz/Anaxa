@@ -16,14 +16,15 @@ Use this skill when the user asks for:
 ## Core Rules
 
 1. Prefer the `academic_research` tool over ad hoc web browsing when the task is literature-heavy.
-2. For large academic tasks, delegate to `task` with `subagent_type="academic-researcher"` so the main thread stays clean.
-3. Do not invent references, DOI metadata, or claims that are not grounded in the generated evidence bundle.
-4. Treat the generated `report.md`, `references.md`, `references.bib`, and `evidence_map.json` as the source of truth.
-5. When writing final prose in chat, use the artifact bundle first and only then polish wording.
-6. Follow the user's requested reference style. Use APA 7 only when no style is specified.
-7. For manuscript-style requests, default to LaTeX + PDF and prefer `manuscript_export` so writing, citation audit, PDF compilation, and artifact presentation happen in one enforced step.
-8. Read or audit `references.bib` before inserting inline LaTeX citations. Use exact BibTeX keys only; do not use `\nocite{*}` unless the user explicitly asks to list every reference without inline citation placement.
-9. If citation or PDF generation fails, report the exact failed tool and error. Do not claim tools are unavailable when file tools, `manuscript_export`, `citation_audit`, or `present_files` are available.
+2. When the user asks for latest datasets, benchmarks, leaderboards, baselines, or experiment-ready evidence, call `dataset_benchmark_discovery` before drafting conclusions.
+3. For large academic tasks, delegate to `task` with `subagent_type="academic-researcher"` so the main thread stays clean.
+4. Do not invent references, DOI metadata, datasets, benchmark scores, or claims that are not grounded in generated evidence.
+5. Treat the generated `report.md`, `references.md`, `references.bib`, `evidence_map.json`, and `dataset_benchmark_map.json` as source material with different roles: literature support is not the same as executed experiment support.
+6. When writing final prose in chat, use the artifact bundle first and only then polish wording.
+7. Follow the user's requested reference style. Use APA 7 only when no style is specified.
+8. For manuscript-style requests, default to LaTeX + PDF and prefer `manuscript_export` so writing, citation audit, PDF compilation, and artifact presentation happen in one enforced step.
+9. Read or audit `references.bib` before inserting inline LaTeX citations. Use exact BibTeX keys only; do not use `\nocite{*}` unless the user explicitly asks to list every reference without inline citation placement.
+10. If citation or PDF generation fails, report the exact failed tool and error. Do not claim tools are unavailable when file tools, `manuscript_export`, `citation_audit`, or `present_files` are available.
 
 ## Recommended Workflow
 
@@ -33,6 +34,10 @@ If the user gives a research topic, run:
 
 - `academic_research(topic=..., scope=...)`
 
+If the task depends on datasets, benchmarks, or baselines, first run:
+
+- `dataset_benchmark_discovery(topic=..., scope=...)`
+
 This will automatically:
 
 - expand queries
@@ -40,11 +45,18 @@ This will automatically:
 - deduplicate and rank them
 - produce a report bundle
 
+The benchmark discovery bundle records candidate datasets, license/access
+status, metrics, baseline/SOTA hints, and risks. It does not download gated
+data or make leaderboard claims final.
+
 ### 2. Build Manuscript Bundle When Requested
 
 For a paper, manuscript, review article draft, or experiment paper:
 
 - create or reuse `references.bib`
+- use `dataset_benchmark_map.json` to name candidate datasets/benchmarks only after checking access and version/date
+- use `experiment_lab` outputs for executed results, ablations, robustness checks, and error analysis
+- keep experimental claims unsupported unless `claim_support_matrix.json` marks them `supported_by_experiment`
 - write LaTeX with exact BibTeX keys from `references.bib`
 - call `manuscript_export(tex_content=..., bibtex_content=..., filename_stem="manuscript")`
 - if `manuscript_export` reports missing keys, unsupported claims, blocked `\nocite{*}`, or compile errors, fix the inputs and retry before final delivery

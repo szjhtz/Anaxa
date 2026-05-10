@@ -20,12 +20,14 @@ This skill governs MedrixFlow's experiment workflow. It does not replace executi
 ## Core Rules
 
 - Do not invent datasets, metrics, plots, baselines, enrichments, or scientific conclusions.
+- For benchmark-driven work, use `dataset_benchmark_discovery` first to map candidate datasets, leaderboards, metrics, access limits, and baseline/SOTA hints.
 - If the task requires actual experimental output, prefer the `experiment_lab` tool instead of ad hoc reasoning.
 - Ask for missing inputs before running a workflow when the absence would invalidate the result:
   - no dataset
   - no target column for supervised CS/AI work
   - no metadata/group labels for requested differential analysis
 - Keep literature evidence separate from experimental evidence. Use `academic_research` only for related work or method framing.
+- Keep candidate benchmark evidence separate from executed experiment evidence. A dataset map can justify a plan, but only `experiment_lab` or attached result files can support manuscript result claims.
 - Default to Python-first execution. Do not ask the user to choose Python or R unless they explicitly request R output.
 - For empirical methods such as DID, IV, RDD, PSM/IPW, synthetic control, DML,
   causal forest, target-trial emulation, TMLE, survival, Table 1, event study,
@@ -94,10 +96,16 @@ not executed, and avoid causal claims.
 
 When using the structured pipeline, prefer returning a concise summary plus artifacts. The artifact bundle should usually include:
 
+- `experiment_contract.json`
 - `experiment_plan.md`
 - `methods.md`
 - `results.md`
 - `metrics.json`
+- `baseline_results.json`
+- `ablation_results.json`
+- `robustness_results.json`
+- `error_analysis.md`
+- `claim_support_matrix.json`
 - `figure_manifest.json`
 - `figures/`
 - `tables/`
@@ -120,6 +128,21 @@ Use `experiment_lab` when the user needs execution, metrics, or figure generatio
 - `linked_academic_project_id` when the experiment should feed a formal report
 - `metadata` with empirical method, estimand, variables, identification assumptions,
   and required outputs for empirical research tasks
+
+## MATLAB Routing
+
+Use `matlab_execution` only when the user explicitly needs MATLAB and command-line
+MATLAB is available. Generate a complete `.m` script, run it via batch mode, and
+write all figures, `.mat`, `.csv`, and logs into the provided output directory.
+Do not claim MATLAB GUI control; GUI automation requires a separate desktop
+integration outside this skill.
+
+MATLAB results still need the same evidence discipline:
+
+- save numeric outputs in machine-readable files
+- summarize the method and parameters
+- link manuscript claims to generated artifacts
+- mark missing ablations or robustness checks as limitations
 
 ## Final Response Pattern
 

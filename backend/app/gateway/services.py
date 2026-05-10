@@ -237,14 +237,17 @@ class GatewayRunService:
         caller: str,
         content: dict[str, Any],
     ) -> dict[str, Any]:
-        await self.require_run(thread_id, run_id)
-        return await self._event_store.put(
+        record = await self.require_run(thread_id, run_id)
+        row = await self._event_store.put(
             thread_id=thread_id,
             run_id=run_id,
             event_type=event_type,
             caller=caller,
             content=content,
         )
+        if record.status in {RunStatus.pending, RunStatus.running}:
+            await self._run_manager.set_status(run_id, RunStatus.running, error=record.error)
+        return row
 
     async def materialize_run_messages(
         self,
