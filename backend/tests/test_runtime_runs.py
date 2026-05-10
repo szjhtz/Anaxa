@@ -246,6 +246,30 @@ def test_workflow_endpoint_normalizes_run_events():
     asyncio.run(scenario())
 
 
+def test_workflow_keeps_scanned_artifacts_out_of_nodes(tmp_path):
+    async def scenario():
+        service, db = await _make_runtime_service()
+        outputs = tmp_path / "outputs"
+        outputs.mkdir()
+        (outputs / "scanned-only.txt").write_text("artifact", encoding="utf-8")
+
+        await service.start_run(
+            "thread-1",
+            runs.RunCreateRequest(run_id="run-scanned-artifacts", assistant_id="lead_agent"),
+        )
+
+        with patch("app.gateway.workflow.get_paths") as mock_get_paths:
+            mock_get_paths.return_value.sandbox_outputs_dir.return_value = outputs
+            workflow = await service.build_workflow("thread-1", "run-scanned-artifacts", limit=20)
+
+        assert workflow["nodes"] == []
+        assert workflow["artifacts"][0]["filepath"] == "/mnt/user-data/outputs/scanned-only.txt"
+
+        await db.close()
+
+    asyncio.run(scenario())
+
+
 def test_external_sideband_events_do_not_advance_checkpoint_materialization():
     async def scenario():
         service, db = await _make_runtime_service(messages=[HumanMessage(content="before")])

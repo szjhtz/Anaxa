@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -96,7 +96,7 @@ describe("ThreadDetailsTrigger", () => {
     mocks.getRunWorkflow.mockReset();
   });
 
-  it("opens a details panel with workflow, artifacts, stats, export, and logs", async () => {
+  it("opens a details panel with workflow tree, artifacts, stats, and logs export menu", async () => {
     mocks.cancelThreadRun.mockResolvedValue(undefined);
     mocks.listThreadRuns.mockResolvedValue([
       {
@@ -133,8 +133,28 @@ describe("ThreadDetailsTrigger", () => {
           created_at: "2026-05-09T00:00:05Z",
           metadata: { event_type: "tool_message" },
         },
+        {
+          id: "artifact-1",
+          kind: "artifact",
+          label: "paper.pdf",
+          status: "success",
+          summary:
+            "/mnt/user-data/outputs/really-long-directory-name-that-should-wrap-instead-of-overflowing-the-panel/paper.pdf",
+          artifact_path:
+            "/mnt/user-data/outputs/really-long-directory-name-that-should-wrap-instead-of-overflowing-the-panel/paper.pdf",
+          seq: 1,
+          created_at: "2026-05-09T00:00:06Z",
+          metadata: {},
+        },
       ],
-      edges: [],
+      edges: [
+        {
+          id: "edge-event-1-artifact-1",
+          source: "event-1",
+          target: "artifact-1",
+          label: "created",
+        },
+      ],
       events: [
         {
           seq: 1,
@@ -167,7 +187,15 @@ describe("ThreadDetailsTrigger", () => {
     fireEvent.click(screen.getByTestId("thread-details-trigger"));
 
     expect(await screen.findByText("Agent 工作流、工具调用、产出文件与运行日志")).toBeInTheDocument();
+    expect(await screen.findByText("任务 / Run")).toBeInTheDocument();
     expect(await screen.findByText("manuscript_export")).toBeInTheDocument();
+    fireEvent.click(await screen.findByText("paper.pdf"));
+    expect(await screen.findByTestId("workflow-artifact-path")).toHaveTextContent(
+      "/mnt/user-data/outputs/really-long-directory-name-that-should-wrap-instead-of-overflowing-the-panel/paper.pdf",
+    );
+
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.queryByRole("tab", { name: "导出" })).not.toBeInTheDocument();
 
     const filesTab = screen.getByRole("tab", { name: "产出" });
     fireEvent.pointerDown(filesTab);
@@ -177,16 +205,74 @@ describe("ThreadDetailsTrigger", () => {
     const statsTab = screen.getByRole("tab", { name: "统计" });
     fireEvent.pointerDown(statsTab);
     fireEvent.click(statsTab);
-    expect(screen.getByText("30")).toBeInTheDocument();
-
-    const exportTab = screen.getByRole("tab", { name: "导出" });
-    fireEvent.pointerDown(exportTab);
-    fireEvent.click(exportTab);
-    expect(screen.getByText("导出运行轨迹 JSON")).toBeInTheDocument();
+    expect(screen.getByText("当前 Run")).toBeInTheDocument();
+    expect(screen.getByText("整个对话")).toBeInTheDocument();
+    expect(screen.getAllByText("30").length).toBeGreaterThanOrEqual(2);
 
     const logsTab = screen.getByRole("tab", { name: "日志" });
     fireEvent.pointerDown(logsTab);
     fireEvent.click(logsTab);
+    const exportButton = screen.getByRole("button", { name: "导出" });
+    fireEvent.keyDown(exportButton, { key: "Enter" });
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("导出运行轨迹 JSON")).toBeInTheDocument();
     expect(screen.getByText("#1")).toBeInTheDocument();
+  });
+
+  it("keeps scanned-only artifacts out of the workflow tab", async () => {
+    mocks.cancelThreadRun.mockResolvedValue(undefined);
+    mocks.listThreadRuns.mockResolvedValue([
+      {
+        run_id: "run-1",
+        thread_id: "thread-1",
+        assistant_id: "lead_agent",
+        status: "success",
+        metadata: {},
+        kwargs: {},
+        multitask_strategy: "reject",
+        created_at: "2026-05-09T00:00:00Z",
+        updated_at: "2026-05-09T00:00:10Z",
+      },
+    ]);
+    mocks.getRunWorkflow.mockResolvedValue({
+      run: {
+        run_id: "run-1",
+        thread_id: "thread-1",
+        assistant_id: "lead_agent",
+        status: "success",
+        created_at: "2026-05-09T00:00:00Z",
+        updated_at: "2026-05-09T00:00:10Z",
+        last_event_at: null,
+      },
+      nodes: [],
+      edges: [],
+      events: [],
+      artifacts: [
+        {
+          filepath: "/mnt/user-data/outputs/scanned-only.txt",
+          filename: "scanned-only.txt",
+          size: 123,
+          modified_at: "2026-05-09T00:00:10Z",
+        },
+      ],
+      usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+      has_more: false,
+    });
+
+    render(
+      <ThreadDetailsTrigger threadId="thread-1" currentRunId="run-1" streaming={false} />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByTestId("thread-details-trigger"));
+
+    expect(await screen.findByText("任务 / Run")).toBeInTheDocument();
+    expect(screen.queryByText("历史产出")).not.toBeInTheDocument();
+    expect(screen.queryByText("scanned-only.txt")).not.toBeInTheDocument();
+
+    const filesTab = screen.getByRole("tab", { name: "产出" });
+    fireEvent.pointerDown(filesTab);
+    fireEvent.click(filesTab);
+    expect(await screen.findByText("scanned-only.txt")).toBeInTheDocument();
   });
 });

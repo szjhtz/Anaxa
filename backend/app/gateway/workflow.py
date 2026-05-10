@@ -360,37 +360,6 @@ def build_workflow_snapshot(
             edges.append(WorkflowEdge(id=f"edge-{node_id}-{artifact_id}", source=node_id, target=artifact_id, label="created"))
 
     artifacts = _list_artifacts(record.thread_id)
-    for artifact in artifacts:
-        if artifact.filepath in seen_artifact_nodes:
-            continue
-        seen_artifact_nodes.add(artifact.filepath)
-        node_id = _artifact_node_id(artifact.filepath)
-        nodes.append(
-            WorkflowNode(
-                id=node_id,
-                kind="artifact",
-                label=artifact.filename,
-                status="success",
-                summary=artifact.filepath,
-                artifact_path=artifact.filepath,
-                created_at=artifact.modified_at,
-            )
-        )
-        if previous_node_id is not None:
-            edges.append(WorkflowEdge(id=f"edge-{previous_node_id}-{node_id}", source=previous_node_id, target=node_id, label="artifact"))
-
-    if not nodes:
-        status = "running" if record.status.value in {"pending", "running"} else record.status.value
-        nodes.append(
-            WorkflowNode(
-                id="run",
-                kind="agent",
-                label=record.assistant_id or "Assistant",
-                status=status if status in {"pending", "running", "success", "error", "interrupted"} else "success",
-                summary="Run registered. Waiting for the first visible event.",
-                created_at=record.created_at,
-            )
-        )
 
     last_event_at = events[-1].created_at if events else None
     return WorkflowSnapshot(
