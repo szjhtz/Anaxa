@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <b>An auditable, interruptible, human-steerable research copilot and workspace</b><br/>
+  <b>An auditable, interruptible, human-steerable workspace for research agents</b><br/>
   Literature Retrieval · Evidence Maps · Experiment Loops · LaTeX/PDF Manuscripts · Human Gates
 </p>
 
@@ -24,16 +24,16 @@
 
 ## What Is Anaxa
 
-Anaxa is an open-source agent system for scientific research workflows. It is not just a chat UI, and it is not an unsupervised paper-writing machine. It brings literature retrieval, evidence auditing, experiment execution, manuscript drafting, reviewer-style checks, and final artifact bundling into one traceable research lifecycle.
+Anaxa is an open-source agent system for scientific research workflows. It is not a generic chat UI, and it is not an unsupervised paper generator. It connects literature retrieval, evidence auditing, experiment execution, manuscript drafting, reviewer-style checks, and final artifact packaging into one traceable research lifecycle.
 
-The goal is to move research assistance from "a model writes a long answer in chat" to "each step has sources, artifacts, status, failure records, and handoff points." Chat remains the main entry point, but research-heavy requests are routed to backend tools for academic search, experiments, manuscript export, and staged orchestration.
+The goal is to move research assistance from "a model writes a long answer in chat" to "each step has sources, artifacts, status, failure records, and human handoff points." Chat remains the main entry point, but research-heavy requests are routed to backend tools for academic search, experiments, manuscript export, and staged orchestration.
 
 Anaxa is built for:
 
 - Literature reviews, related work, research background, and reference curation.
 - Manuscript drafts, experiment reports, and research memos with claim-level evidence.
 - Reproducible analysis for CS/AI, data science, bioinformatics, and empirical research.
-- One-shot LaTeX paper bundles with BibTeX, citation audit, and PDF output.
+- One-pass LaTeX paper bundles with BibTeX, citation audit, and PDF output.
 - Long-running research projects that require stage tracking and human approval.
 
 ## Core Research Workflow
@@ -54,7 +54,7 @@ intake
   -> final_bundle
 ```
 
-Each stage records inputs, outputs, tool calls, artifacts, failure reasons, and gate decisions in a research ledger. Risky actions such as external code execution, long experiments, automatic experiment-code modification, and final manuscript release require human gates by default.
+Each stage records inputs, outputs, tool calls, artifacts, failure reasons, and gate decisions in a research ledger. Riskier actions, including external code execution, long experiments, automatic experiment-code edits, and final manuscript release, require human approval by default.
 
 ## Key Capabilities
 
@@ -62,8 +62,8 @@ Each stage records inputs, outputs, tool calls, artifacts, failure reasons, and 
 
 - `academic_research` handles multi-source paper retrieval, metadata normalization, deduplication, evidence-card generation, reference export, and coverage audits.
 - Supported source families include Semantic Scholar, OpenAlex, Crossref, arXiv, DBLP, OpenReview, and ACL Anthology.
-- References follow the user's requested style, including APA 7, MLA 9, Chicago, GB/T 7714, plain text, and BibTeX.
-- Review, survey, and manuscript tasks activate a stricter quality profile with higher reference targets, citation-density checks, off-topic reference filtering, and automatic search repair.
+- References can be exported in the user's requested style, including APA 7, MLA 9, Chicago, GB/T 7714, plain text, and BibTeX.
+- Review, survey, and manuscript tasks use a stricter quality profile with higher reference targets, citation-density checks, off-topic reference filtering, and automatic search repair.
 
 ### Claim-Level Evidence Map
 
@@ -73,14 +73,14 @@ Anaxa does not treat a bibliography at the end of a paper as sufficient evidence
 claim -> paper_id -> citation_key -> snippet/page/abstract evidence -> support_status -> confidence
 ```
 
-When full-text PDFs are unavailable, the system can fall back to title, abstract, and metadata evidence, but the audit marks that evidence as weaker. Missing citation keys, overuse of `\nocite{*}`, paragraphs without citations, unsupported claims, and leftover process notes are surfaced in `citation_audit.json` and can block final PDF release.
+When full-text PDFs are unavailable, the system can fall back to title, abstract, and metadata evidence, but the audit marks that evidence as weaker. Missing citation keys, overuse of `\nocite{*}`, paragraphs without citations, unsupported claims, and leftover process notes are surfaced in `citation_audit.json` and can block the final PDF release.
 
 ### Experiment Loop
 
 - `experiment_lab` provides Python-first experiment execution, metric tracking, figure generation, and result-bundle export.
 - It supports baselines, ablations, seeds, metrics, failure summaries, branch ranking, and a reproducibility ledger.
 - CS/AI workflows cover regression, classification, clustering, dimensionality reduction, diagnostics, model evaluation, and paper-ready result summaries.
-- Bioinformatics workflows cover bulk expression, differential analysis, enrichment, single-cell starter workflows, and common scientific figures.
+- Bioinformatics workflows cover bulk expression, differential analysis, enrichment analysis, single-cell starter workflows, and common scientific figures.
 - Empirical-research skills can translate DID, IV, RDD, PSM/IPW, DML, target-trial, and TMLE requirements into experiment metadata and gates.
 
 ### Manuscript and PDF Export
@@ -92,9 +92,9 @@ Manuscript, review, survey, and experiment-paper requests default to a LaTeX bun
 - `citation_audit.json`
 - `manuscript.pdf`
 
-The high-level `manuscript_export` tool handles file writing, citation audit, LaTeX compilation, and artifact presentation as one operation. Lower-level tools such as `write_file`, `citation_audit`, and `present_files` are still available, but final manuscript delivery should prefer the high-level export path instead of leaving file generation to ad hoc chat behavior.
+The high-level `manuscript_export` tool handles file writing, citation audit, LaTeX compilation, and artifact presentation as one operation. Lower-level tools such as `write_file`, `citation_audit`, and `present_files` remain available, but final manuscript delivery should use the high-level export path instead of leaving file generation to one-off chat responses.
 
-The PDF path currently prefers `tectonic`. If the compiler is missing or LaTeX compilation fails, the system should return the exact tool error and keep the `.tex`, `.bib`, and audit files for repair.
+The PDF path currently prefers `tectonic`. If the compiler is missing or LaTeX compilation fails, the system returns the exact tool error and keeps the `.tex`, `.bib`, and audit files for repair.
 
 ### Quality Audit and Auto-Repair
 
@@ -107,13 +107,13 @@ The PDF path currently prefers `tectonic`. If the compiler is missing or LaTeX c
 - Evaluation frameworks without implementation challenges and mitigations.
 - Repeated phrasing, over-absolute wording, weak transitions, and process-note residue.
 
-The default policy is to repair first: expand search, add evidence, look for benchmarks, rewrite weak sections, and only then block at a human gate if the repair budget is exhausted.
+The default policy is to repair first: expand search, add evidence, look for benchmarks, and rewrite weak sections. If the repair budget is exhausted, the workflow stops at a human gate and returns a concrete remediation report.
 
 ### Thread Artifacts and Thread-Scoped Memory
 
 - Each chat/thread has isolated `workspace`, `uploads`, `outputs`, and `memory.json` storage.
 - A new chat starts with empty private memory and does not inherit a global user profile or another thread's research state.
-- Reports, BibTeX files, PDFs, figures, tables, and audit files are written to thread-scoped outputs and discovered by the artifact panel.
+- Reports, BibTeX files, PDFs, figures, tables, and audit files are written to thread-scoped outputs and surfaced in the artifact panel.
 - Legacy memory APIs remain for compatibility, but the frontend no longer exposes a shared memory settings page.
 
 ### Read-Only Feature Inventory
@@ -173,7 +173,7 @@ Runtime data is stored under `backend/.medrix-flow` or the directory pointed to 
 
 ## Quick Start
 
-Anaxa 1.0 is released as an open-source development build by default: download the source, initialize local files, start the app locally, then configure models in the frontend. UI password protection is disabled by default; this mode is intended for localhost or trusted LAN development, not public internet deployment.
+Anaxa 1.0 is released as an open-source development build by default: download the source, initialize local files, start the app locally, then configure models in the frontend. UI password protection is disabled by default; this mode is intended for localhost or trusted LAN use, not public internet deployment.
 
 ### 1. Install Base Tools
 
@@ -191,7 +191,7 @@ If you are not sure whether they are installed, run:
 make check
 ```
 
-The checker prints clear install hints for anything missing. `tectonic` is optional and only affects LaTeX PDF generation reliability.
+The checker prints install hints for anything missing. `tectonic` is optional and only affects LaTeX PDF generation reliability.
 
 ### 2. Download and Bootstrap
 
@@ -321,7 +321,7 @@ Built-in tools:
 - `academic_research`: paper retrieval, evidence cards, references, and audits.
 - `research_assistant`: research lifecycle, ledger, gates, quality audits, and `run_pipeline`.
 - `experiment_lab`: experiment execution, figures, metrics, and reproducibility bundles.
-- `manuscript_export`: one-shot LaTeX/BibTeX/audit/PDF export.
+- `manuscript_export`: one-pass LaTeX/BibTeX/audit/PDF export.
 - `citation_audit`: citation key, in-text citation, and claim-support checks for LaTeX.
 - `present_files`: artifact presentation and `.tex` PDF preview.
 - `ask_clarification`: structured user confirmation.
@@ -333,7 +333,7 @@ Skills are discovered from `skills/public` and `skills/custom`, then injected ac
 ## Safety and Deployment
 
 - Production should set `MEDRIX_FLOW_ENV=production`.
-- When exposing the UI/API through Nginx, set `MEDRIX_FLOW_UI_PASSWORD`; otherwise protected pages and APIs fail closed.
+- When exposing the UI/API through Nginx, set `MEDRIX_FLOW_UI_PASSWORD`; otherwise protected pages and APIs deny access by default.
 - Scripted administration can use `MEDRIX_GATEWAY_ADMIN_TOKEN` with the `x-medrix-admin-token` header.
 - Local sandboxing is for trusted development. Production or untrusted code execution should use `AioSandboxProvider` or provisioner/Kubernetes mode.
 - Bash tool calls go through safety auditing and path isolation; thread virtual paths are constrained to `/mnt/user-data`.
