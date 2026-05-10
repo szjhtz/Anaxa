@@ -1,479 +1,415 @@
-# MedrixFlow 2.6.2
+# Anaxa 3.0
 
 **English** | [中文](./README.md)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Made%20with-LangGraph-blue?style=for-the-badge&logo=python" alt="LangGraph">
+  <img src="./Anaxa%20logo.jpg" alt="Anaxa" width="96">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-3.0-111827?style=for-the-badge" alt="Version 3.0">
+  <img src="https://img.shields.io/badge/Orchestration-LangGraph-blue?style=for-the-badge&logo=python" alt="LangGraph">
   <img src="https://img.shields.io/badge/Frontend-Next.js%2016-black?style=for-the-badge&logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react" alt="React 19">
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python" alt="Python 3.12">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
 </p>
 
 <p align="center">
-  <b>An AI Research Agent Platform for Academic Writing and Experiment Reports</b><br/>
-  Literature Retrieval · Multi-Style References · Experimental Evidence · Multi-Agent Collaboration
+  <b>An auditable, interruptible, human-steerable research copilot and workspace</b><br/>
+  Literature Retrieval · Evidence Maps · Experiment Loops · LaTeX/PDF Manuscripts · Human Gates
 </p>
 
 ---
 
-MedrixFlow is a full-stack AI agent orchestration platform for academic writing, literature reviews, experiment reports, and research delivery. The backend uses LangGraph for multi-agent collaboration and state management, while the frontend provides a thread-based chat and artifact workflow built on Next.js 16. Beyond general-purpose agent capabilities, MedrixFlow now includes structured academic retrieval, multi-style reference export, CS/AI and bioinformatics experiment specialist agents, local evidence storage, and report-oriented artifact delivery, with research, literature, and experiment intent routed automatically from normal chat. It is designed to solve the usual gaps in academic workflows: weak scholarly grounding, poor references, and disconnected experiment outputs.
+## What Is Anaxa
 
-## Key Features
+Anaxa is an open-source agent system for scientific research workflows. It is not just a chat UI, and it is not an unsupervised paper-writing machine. It brings literature retrieval, evidence auditing, experiment execution, manuscript drafting, reviewer-style checks, and final artifact bundling into one traceable research lifecycle.
 
-### 1. Academic Research Pipeline: From Topic to User-Selected References
+The goal is to move research assistance from "a model writes a long answer in chat" to "each step has sources, artifacts, status, failure records, and handoff points." Chat remains the main entry point, but research-heavy requests are routed to backend tools for academic search, experiments, manuscript export, and staged orchestration.
 
-MedrixFlow now includes backend-routed research capabilities for formal academic reporting:
+Anaxa is built for:
 
-- **Built-in academic subagent**: `academic-researcher` handles topic decomposition, query expansion, candidate paper screening, evidence card generation, outline building, and reference export
-- **Chat-native research routing**: prompts about literature, papers, citations, APA/BibTeX, evidence maps, or related work are routed toward `academic_research`, with complex deliverables delegated to `academic-researcher` when appropriate
-- **Formal-source-first CS/AI stack**: the default `cs_ai` path uses `DBLP`, `OpenReview`, `ACL Anthology`, `Semantic Scholar`, `OpenAlex`, `Crossref`, and `arXiv`, with conference/journal versions preferred as the canonical reference
-- **Formal report exports**: a single research project can produce `report.md`, `references.md` formatted in the user's requested style, `references.bib`, `evidence_map.json`, `retrieval_audit.json`, and optionally `graph.json`
-- **Local evidence persistence**: research projects, paper metadata, evidence cards, outline mappings, and formatted references are stored locally in SQLite for incremental reuse
+- Literature reviews, related work, research background, and reference curation.
+- Manuscript drafts, experiment reports, and research memos with claim-level evidence.
+- Reproducible analysis for CS/AI, data science, bioinformatics, and empirical research.
+- One-shot LaTeX paper bundles with BibTeX, citation audit, and PDF output.
+- Long-running research projects that require stage tracking and human approval.
 
-### 2. Experiment Specialist Agents: CS/AI and Bioinformatics
+## Core Research Workflow
 
-MedrixFlow does not stop at writing. It also closes the gap between experiments and paper-ready outputs:
+Anaxa organizes complex research work around a `ResearchQuest`. A quest moves through explicit, recoverable stages:
 
-- **Visible system agents**: `cs-ai-lab` focuses on regression, classification, clustering, dimensionality reduction, diagnostics, and paper-ready result summaries; `bioinformatics-lab` focuses on bulk expression workflows, differential analysis, enrichment, and single-cell starter analyses
-- **Python-first execution**: experiment workflows run through a unified local Python path to reduce runtime switching and keep outputs reproducible
-- **autoresearch-style iteration**: model training, ablation, and code-tuning tasks can use a baseline-first loop with a fixed evaluation harness, primary metric, trial log, and `keep` / `discard` / `crash` records without importing external training code
-- **Automatic scientific figure routing**: chart type is selected from task intent and data shape, including line plots, histograms, scatter plots, heatmaps, ROC/PR, volcano, violin, and dot plots
-- **Paper-ready export bundle**: experiments can export `experiment_plan.md`, `methods.md`, `results.md`, `metrics.json`, `figure_manifest.json`, `figures/`, `tables/`, and when needed `paper_ready_results.md`
-
-### 3. Thread-Level Delivery and Artifact Discovery
-
-Academic workflows only work if users can reliably find the generated outputs:
-
-- **Thread-level outputs directory**: reports, BibTeX, figures, and result tables are written into the current thread’s artifact directory
-- **Improved right-side file panel**: the artifact panel supports auto-discovery of thread `outputs`, a manual refresh button, latest-file highlighting, preview, and download
-- **Delivery over chat spam**: larger research tasks prefer artifact bundles instead of forcing long reports into a single chat message
-
-### 4. LangGraph-Powered Multi-Agent Orchestration
-
-Unlike simple LLM chaining, MedrixFlow uses a **LangGraph directed graph state machine** as its orchestration core:
-
-- **Lead Agent + Subagent architecture**: the lead agent handles task understanding and decomposition, delegating to up to 3 subagents in parallel, each with a 15-minute timeout
-- **Multi-layer middleware chain**: a strictly ordered pipeline handles thread isolation, uploads, sandbox lifecycle, security auditing, summarization, memory extraction, loop detection, tool error degradation, token tracking, and visual quality gating
-- **Dynamic model hot-swapping**: conversations can switch LLMs mid-thread, with model capabilities declared through flags such as `supports_thinking`, `supports_reasoning_effort`, and `supports_vision`
-
-### 5. Thread-Level Sandbox Isolation
-
-Each conversation thread has a fully isolated execution environment:
-
-- **Virtual filesystem mapping**: `/mnt/user-data/{workspace,uploads,outputs}` is mapped to thread-specific physical directories to prevent cross-thread data leakage
-- **Dual sandbox engine**: supports local direct execution (`LocalSandboxProvider`) and Docker-based isolation (`AioSandboxProvider`), with K3s pod isolation as a production option
-- **Complete toolchain coverage**: bash execution, file read/write, string replacement, and directory browsing are all available inside the isolated workspace
-
-### 6. LLM-Driven Persistent Memory
-
-Unlike simple history concatenation, MedrixFlow implements a structured long-term memory system:
-
-- **Automatic knowledge extraction**: the LLM extracts user background, preferences, facts, and context from conversations
-- **User correction detection**: 11 EN/ZH regex patterns detect corrections in real time and prioritize memory updates
-- **Debounced batch processing**: multi-turn changes are aggregated with a configurable debounce window (default 30s) to reduce LLM overhead
-- **Pluggable storage backend**: JSON file storage is the default, but `storage_class` can be swapped for SQLite, Redis, or custom implementations
-- **System prompt injection**: high-confidence facts and user context are automatically injected into prompts for cross-session personalization
-
-### 7. Streaming and Zero-Config Frontend UX
-
-MedrixFlow keeps the UX production-ready through the LangGraph SDK’s `useStream` and a frontend-first setup flow:
-
-- **SSE streaming rendering**: responses, thinking traces, and subagent progress stream in real time
-- **Automatic disconnection recovery**: `reconnectOnMount + streamResumable` allows recovery after refresh or network interruption while backend execution continues
-- **Frontend-first setup**: model and API key configuration is handled in the UI and hot-reloaded into the app
-- **Modes map to reasoning depth**: `flash / thinking / pro / ultra` expose higher-level behavior, reasoning effort, and subagent capability instead of low-level model toggles
-
-### 8. Visual Quality, Security Auditing, and Observability
-
-The platform also keeps strong delivery quality and operational visibility:
-
-- **Visual quality gates**: `visual_quality_check` and `visual_refinement_check` enforce structured QA before charts, PPT, or image outputs are delivered
-- **Dedicated visual subagent**: `visual-specialist` handles high-quality visual generation and iterative refinement
-- **Bash command auditing**: `SandboxAuditMiddleware` classifies every bash call into block / warn / pass and records audit logs
-- **Token usage tracking**: `TokenUsageMiddleware` records input / output / total token counts per LLM call
-- **Sandbox security awareness**: `security.py` exposes helpers to determine the current sandbox security level at runtime
-
-## Current Interaction Notes
-
-### Academic Reports and File Delivery
-
-- Academic research and experiment tasks write outputs such as `report.md`, `references.md`, `references.bib`, figures, and result tables into the current thread’s `outputs`
-- The right-side file panel auto-discovers these artifacts and supports **manual refresh**, **latest-file highlighting**, preview, and download
-- When a task is better delivered as files than as chat prose, the agent prefers returning an artifact bundle that can be reused directly in writing workflows
-
-### Automatic Research Routing
-
-- The sidebar no longer exposes a separate "Research" entry; the primary workflow is normal chat, while `/workspace/research` remains available as an internal or direct Research Dashboard
-- Literature reviews, citations, APA/BibTeX, related work, and evidence mapping prefer `academic_research`, with complex deliverables delegated to `academic-researcher`
-- `research_assistant` is used only when the user clearly asks for a staged research-project lifecycle, stage advancement, novelty checks, experiment gates, reviewer loops, or final bundle release
-- Review, survey, manuscript, and paper-draft tasks activate a review-quality profile: 50 minimum usable references, 80 target references, 30 core papers, and a persisted `reference_coverage_audit`
-- Research quest review/final stages persist `ResearchQualityAudit` records for citation density, reference coverage, off-topic references, quantitative/benchmark evidence, feasibility discussion, repeated or over-absolute wording, and process-note residue; auto-repair runs before handing control back to a human gate
-- Real data experiments, model evaluation, bioinformatics analysis, and scientific figures continue to route through `experiment_lab`
-
-### Clarification and Confirmation
-
-- When the agent needs more information or explicit approval, it calls `ask_clarification`
-- In the web UI, these requests are rendered as button-based choices instead of plain text only
-- Each clarification card includes a final `type something` option so the user can switch back to free-form input
-
-### LaTeX / PDF Preview
-
-- When `present_files` is used on a `.tex` file, the app attempts to generate a preview PDF automatically
-- The current implementation prefers local `tectonic` and does not require `pdflatex`, `xelatex`, or `latexmk`
-- The preview pipeline also applies common compatibility fixes such as downloading remote images, injecting `subfig`, and normalizing some Unicode sub/superscripts
-
-### Production Security Requirements
-
-- Production deployments must explicitly set `MEDRIX_FLOW_ENV=production` so the Python services enable their production safety guards and reject `LocalSandboxProvider`
-- When nginx exposes the UI/API, `MEDRIX_FLOW_UI_PASSWORD` must be configured or `/workspace`, `/api/*`, `/api/langgraph/*`, and `/docs` will fail closed
-- For scripted access to protected endpoints, you can additionally configure `MEDRIX_GATEWAY_ADMIN_TOKEN` and send it as the `x-medrix-admin-token` header
-
-### Skills and Extensions
-
-- Skills are auto-discovered from `skills/public` and `skills/custom`
-- Skill enablement state and MCP configuration are stored together in `extensions_config.json`
-- Users can enable or disable skills from the settings page, or drop custom skills directly into `skills/custom`
-- Current public skills cover academic deep research, experiment analysis, data analysis, Nature-style figures, PPT/image/video/podcast generation, web design, skill/plugin helpers, and GitHub deep research workflows
-
-## System Architecture
-
-```
-                     ┌─────────────────────────────────────────────┐
-                     │            Nginx (Port 1000)                │
-                     │        Unified Reverse Proxy Entry          │
-                     └──────┬────────────────────┬─────────────────┘
-                            │                    │
-          /api/langgraph/*  │                    │  /api/* (other)
-                            v                    v
-          ┌──────────────────────┐  ┌──────────────────────────────┐
-          │  LangGraph Server    │  │   Gateway API (Port 8001)    │
-          │    (Port 2024)       │  │   FastAPI REST               │
-          │                      │  │                              │
-          │ ┌──────────────────┐ │  │  /api/models        Models   │
-          │ │    Lead Agent    │ │  │  /api/agents        Agents   │
-          │ │                  │ │  │  /api/academic/*    Academic │
-          │ │   Multi-Layer    │ │  │  /api/experiments/* Experim. │
-          │ │  Middleware Chain │ │  │  /api/threads/*     Threads  │
-          │ │       |          │ │  │  /api/skills        Skills   │
-          │ │   Tool System    │ │  │  /api/setup/*       Config   │
-          │ │       |          │ │  │  /api/mcp/config    MCP Cfg  │
-          │ │  Subagents(x3)   │ │  └──────────────────────────────┘
-          │ └──────────────────┘ │
-          └──────────────────────┘
-                            │
-          ┌──────────────────────┐
-          │   Frontend (Port 3000)│
-          │   Next.js 16         │
-          │   React 19           │
-          │   TailwindCSS 4      │
-          │   Shadcn UI          │
-          └──────────────────────┘
+```text
+intake
+  -> literature
+  -> novelty_check
+  -> evidence_verified
+  -> experiment_planned
+  -> experiment_running
+  -> results_synthesized
+  -> manuscript_draft
+  -> review
+  -> revision
+  -> final_bundle
 ```
 
-**Request Routing** (via Nginx):
-- `/api/langgraph/*` → LangGraph Server: Agent interaction, thread management, SSE streaming
-- `/api/*` (other) → Gateway API: Models, MCP, Skills, academic research, experiment projects, run/feedback APIs, uploads, and artifacts
-- `/` (non-API) → Frontend: Next.js web interface
+Each stage records inputs, outputs, tool calls, artifacts, failure reasons, and gate decisions in a research ledger. Risky actions such as external code execution, long experiments, automatic experiment-code modification, and final manuscript release require human gates by default.
 
-### Middleware Chain Details
+## Key Capabilities
 
-| # | Middleware | Responsibility |
-|---|-----------|---------------|
-| 1 | ThreadDataMiddleware | Creates thread-specific isolation directories (workspace/uploads/outputs) |
-| 2 | UploadsMiddleware | Injects newly uploaded files into the conversation context |
-| 3 | SandboxMiddleware | Acquires and manages the sandbox execution environment lifecycle |
-| 4 | DanglingToolCallMiddleware | Cleans up dangling incomplete tool calls to ensure consistent history |
-| 5 | GuardrailMiddleware | Pre-tool-call authorization guard (optional, config-driven) |
-| 6 | ToolErrorHandlingMiddleware | Graceful error degradation for failed tool calls |
-| 7 | SummarizationMiddleware | Auto-summarizes and compresses context when approaching token limits (optional) |
-| 8 | TodoListMiddleware | Tracks multi-step task progress in plan mode (optional) |
-| 9 | TitleMiddleware | Auto-generates conversation title after the first message exchange |
-| 10 | MemoryMiddleware | Enqueues conversations for asynchronous memory extraction with correction detection |
-| 11 | ViewImageMiddleware | Injects image data for vision-capable models (model-dependent) |
-| 12 | DeferredToolFilterMiddleware | Defers tool loading to reduce context usage (config-driven) |
-| 13 | SubagentLimitMiddleware | Controls the maximum number of concurrent subagents (config-driven) |
-| 14 | LoopDetectionMiddleware | Detects and interrupts infinite agent loop calls |
-| 15 | SandboxAuditMiddleware | Bash command security auditing: three-tier classification (block/warn/pass) + audit logs |
-| 16 | TokenUsageMiddleware | Records input/output/total token usage per LLM call |
-| 17 | ClarificationMiddleware | Intercepts clarification requests, interrupts graph execution, and feeds the frontend clarification card (must be last) |
-| 18 | VisualQualityMiddleware | Visual output quality gate: checks if visual_quality_check was run before presenting visual files, injects reminder if not |
+### Academic Retrieval and References
 
-### Tool Ecosystem
+- `academic_research` handles multi-source paper retrieval, metadata normalization, deduplication, evidence-card generation, reference export, and coverage audits.
+- Supported source families include Semantic Scholar, OpenAlex, Crossref, arXiv, DBLP, OpenReview, and ACL Anthology.
+- References follow the user's requested style, including APA 7, MLA 9, Chicago, GB/T 7714, plain text, and BibTeX.
+- Review, survey, and manuscript tasks activate a stricter quality profile with higher reference targets, citation-density checks, off-topic reference filtering, and automatic search repair.
 
-| Category | Tools | Description |
-|----------|-------|-------------|
-| Academic Research | `academic_research` | Structured literature retrieval, metadata normalization, paper deduplication, evidence-card persistence, review-quality coverage audit, and user-selected reference export |
-| Research Orchestration | `research_assistant` | Backend staged research quests, novelty checks, evidence gates, experiment planning, quality audit/auto-repair, reviewer loops, and final bundle management |
-| Experiment Execution | `experiment_lab` | Python-first experiment pipeline, scientific figure routing, and result bundle export |
-| Sandbox | bash, ls, read_file, write_file, str_replace | Thread-isolated filesystem operations |
-| Built-in | present_files, ask_clarification, view_image, task, visual_quality_check, visual_refinement_check | File presentation, interactive clarification, image understanding, subagent delegation, visual quality gate, iterative refinement check |
-| Community | Tavily, Jina AI, Firecrawl, DuckDuckGo | Web search, web scraping, image search |
-| MCP | Any MCP-compatible server | Supports stdio/SSE/HTTP transport protocols |
-| Skills | Domain-specific workflows | Skill packs discovered from `skills/public` and `skills/custom`, injected based on enablement state |
+### Claim-Level Evidence Map
 
-### Academic / Experiment APIs
+Anaxa does not treat a bibliography at the end of a paper as sufficient evidence. Important claims should be bound to concrete support:
 
-| Route | Description |
-|-------|-------------|
-| `POST /api/academic/projects` | Create or reuse an academic project bound to a `thread_id` and topic |
-| `POST /api/academic/projects/{project_id}/ingest` | Retrieve papers from multiple sources, normalize metadata, deduplicate, and build the evidence pool |
-| `POST /api/academic/projects/{project_id}/synthesize` | Generate the formal report, requested-style references, BibTeX, and evidence mapping files; `reference_style` defaults to APA 7 only when omitted |
-| `GET /api/academic/projects/{project_id}/references?style=gbt7714` | Read references in the requested style; supports `apa7`, `mla9`, `chicago`, `gbt7714`, `plain`, and `bibtex` |
-| `POST /api/research/quests` | Create a staged research quest from backend flows or the direct Research Dashboard |
-| `POST /api/research/quests/{quest_id}/advance` | Advance intake, literature, novelty, evidence, experiment, manuscript, review, and final bundle stages |
-| `POST /api/research/quests/{quest_id}/gate` | Record human gate decisions for experiment execution, pre-review, and final release |
-| `POST /api/experiments/projects` | Create an experiment project bound to an expert agent, datasets, and an optional academic project |
-| `POST /api/experiments/projects/{project_id}/execute` | Run the experiment pipeline and generate metrics, figures, and result summaries |
-| `POST /api/experiments/projects/{project_id}/export` | Export the experiment bundle, optionally including `paper_ready_results.md` |
+```text
+claim -> paper_id -> citation_key -> snippet/page/abstract evidence -> support_status -> confidence
+```
 
-## Academic Writing Additions
+When full-text PDFs are unavailable, the system can fall back to title, abstract, and metadata evidence, but the audit marks that evidence as weaker. Missing citation keys, overuse of `\nocite{*}`, paragraphs without citations, unsupported claims, and leftover process notes are surfaced in `citation_audit.json` and can block final PDF release.
 
-- **Literature review / related work**: given a topic, MedrixFlow can use `academic-researcher` with `academic-deep-research` to expand queries, search multiple academic sources, deduplicate, and build a core paper pool with evidence mappings
-- **Multi-style references**: formal report workflows export all verified canonical references in the user's requested style without an export cap, along with `references.md`, `references.bib`, and `retrieval_audit.json`; APA 7 remains the compatibility default when no style is specified
-- **Experiment-backed writing**: `cs-ai-lab` and `bioinformatics-lab` can turn structured datasets or expression analyses into figures, tables, methods, and results bundles, reducing the gap between prose and evidence
-- **Controlled iterative experiments**: inspired by the autoresearch-style pattern, model training and ablation work emphasizes baselines, fixed metrics, fixed evaluation budgets, and `keep` / `discard` / `crash` logs instead of unconstrained code changes
-- **Local evidence reuse**: academic and experiment projects can be incrementally reused in the same thread, so follow-up literature, references, and experiments do not have to start from scratch
-- **Artifact-first delivery**: the right-side artifact panel is now better suited for locating newly generated reports, figures, and references without repeatedly asking the agent to resend them
+### Experiment Loop
+
+- `experiment_lab` provides Python-first experiment execution, metric tracking, figure generation, and result-bundle export.
+- It supports baselines, ablations, seeds, metrics, failure summaries, branch ranking, and a reproducibility ledger.
+- CS/AI workflows cover regression, classification, clustering, dimensionality reduction, diagnostics, model evaluation, and paper-ready result summaries.
+- Bioinformatics workflows cover bulk expression, differential analysis, enrichment, single-cell starter workflows, and common scientific figures.
+- Empirical-research skills can translate DID, IV, RDD, PSM/IPW, DML, target-trial, and TMLE requirements into experiment metadata and gates.
+
+### Manuscript and PDF Export
+
+Manuscript, review, survey, and experiment-paper requests default to a LaTeX bundle:
+
+- `manuscript.tex`
+- `references.bib`
+- `citation_audit.json`
+- `manuscript.pdf`
+
+The high-level `manuscript_export` tool handles file writing, citation audit, LaTeX compilation, and artifact presentation as one operation. Lower-level tools such as `write_file`, `citation_audit`, and `present_files` are still available, but final manuscript delivery should prefer the high-level export path instead of leaving file generation to ad hoc chat behavior.
+
+The PDF path currently prefers `tectonic`. If the compiler is missing or LaTeX compilation fails, the system should return the exact tool error and keep the `.tex`, `.bib`, and audit files for repair.
+
+### Quality Audit and Auto-Repair
+
+`ResearchQualityAudit` checks common pre-submission risks:
+
+- Insufficient literature coverage.
+- Low in-text citation density.
+- Off-topic or cross-domain references.
+- Missing quantitative evidence, benchmark evidence, case studies, or experimental results.
+- Evaluation frameworks without implementation challenges and mitigations.
+- Repeated phrasing, over-absolute wording, weak transitions, and process-note residue.
+
+The default policy is to repair first: expand search, add evidence, look for benchmarks, rewrite weak sections, and only then block at a human gate if the repair budget is exhausted.
+
+### Thread Artifacts and Thread-Scoped Memory
+
+- Each chat/thread has isolated `workspace`, `uploads`, `outputs`, and `memory.json` storage.
+- A new chat starts with empty private memory and does not inherit a global user profile or another thread's research state.
+- Reports, BibTeX files, PDFs, figures, tables, and audit files are written to thread-scoped outputs and discovered by the artifact panel.
+- Legacy memory APIs remain for compatibility, but the frontend no longer exposes a shared memory settings page.
+
+### Read-Only Feature Inventory
+
+The frontend settings panel includes a read-only "Features" page that reflects backend configuration:
+
+- Agents: default orchestrator, system agents, custom agents, and subagents.
+- Tools: MCP servers, transport, enabled state, command or URL summaries, and redacted env/header keys.
+- Skills: public and custom skills with name, description, category, enabled state, and license.
+
+This page is an inventory, not an editor. It does not provide create, delete, edit, enable, disable, or connection-test controls. Existing backend management APIs remain available for scripts and compatibility.
+
+## Architecture
+
+```text
+                  http://localhost:1000
+                          |
+                          v
+                  +----------------+
+                  |     Nginx      |
+                  | reverse proxy  |
+                  +---+--------+---+
+                      |        |
+      /api/langgraph/*|        |/api/*
+                      v        v
+        +----------------+   +------------------+
+        | LangGraph      |   | Gateway API      |
+        | Server :2024   |   | FastAPI :8001    |
+        |                |   |                  |
+        | Lead agent     |   | models/setup     |
+        | middleware     |   | features         |
+        | tools          |   | academic         |
+        | subagents      |   | research         |
+        +-------+--------+   | experiments      |
+                |            | artifacts/runs   |
+                |            +---------+--------+
+                |                      |
+                v                      v
+        +----------------+   +------------------+
+        | Sandbox / VFS  |   | SQLite / files   |
+        | /mnt/user-data |   | .medrix-flow     |
+        +----------------+   +------------------+
+
+        +----------------------------------------+
+        | Frontend :3000                         |
+        | Next.js 16 / React 19 / Tailwind CSS 4 |
+        +----------------------------------------+
+```
+
+Request routing:
+
+- `/api/langgraph/*` -> LangGraph Server for agent interaction, threads, SSE streaming, and long-running runs.
+- `/api/*` -> Gateway API for setup, features, academic research, research quests, experiments, uploads, artifacts, and runs.
+- `/` -> Frontend, served by Next.js.
+
+Runtime data is stored under `backend/.medrix-flow` or the directory pointed to by `MEDRIX_FLOW_HOME`. Each thread maps a virtual filesystem to `/mnt/user-data/{workspace,uploads,outputs}`.
 
 ## Quick Start
 
-Get MedrixFlow running in just 4 steps — **no manual config file editing required**.
+### Requirements
 
-### Step 1: Install Prerequisites
+- Python 3.12+
+- Node.js and pnpm
+- uv
+- nginx
+- Docker, optional for container sandboxing or `make up`
+- `tectonic`, optional but recommended for reliable LaTeX PDF generation
 
-| Tool | Version | Installation |
-|------|---------|-------------|
-| Python | 3.12+ | [python.org](https://www.python.org/) |
-| uv | Latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Node.js | 22+ | [nodejs.org](https://nodejs.org/) |
-| pnpm | 10+ | `npm install -g pnpm` |
-| nginx | - | macOS: `brew install nginx` / Linux: `sudo apt install nginx` |
-| tectonic | Recommended | Local PDF preview/export for `.tex` files |
-
-### Step 2: Clone & Install
+### Local Development
 
 ```bash
-git clone https://github.com/Citrus-bit/medrix-flow.git
-cd medrix-flow
-make config    # Auto-generate config.yaml and .env (first time only)
-make install   # One-command install for all frontend and backend dependencies (backend includes dev dependency group)
+make setup
+make doctor
+make install
+make dev
 ```
 
-### Step 3: Start Services
+Open:
+
+```text
+http://localhost:1000
+```
+
+Local services:
+
+- Frontend: `http://localhost:3000`
+- Gateway API: `http://localhost:8001`
+- LangGraph Server: `http://localhost:2024`
+- Unified Nginx entry: `http://localhost:1000`
+
+### Docker Production Mode
 
 ```bash
-make dev       # Start all services (LangGraph + Gateway + Frontend + Nginx)
+make up
 ```
 
-Once started, your browser will automatically open http://localhost:1000
+Default access:
 
-> You can also use `make dev-daemon` to start in the background, or double-click `start.command` for one-click launch.
+```text
+http://localhost:1000
+```
 
-### Step 4: Configure Models & API Keys in the UI
+If `PORT` is set, Docker Compose maps `${PORT}` to container port `1000`. Stop the stack with:
 
-When you first open the page, the setup panel will **automatically pop up** to guide you through configuration:
-
-1. **Add a Model**: On the "Configuration" page, select a provider (OpenAI / Anthropic / Google Gemini / DeepSeek / OpenAI Compatible) and enter the model name
-2. **Enter API Key**: Input your API Key and click the "Test" button to verify connectivity
-3. **Configure Image / Tool / Academic Keys** (optional): If you need scientific image generation, web search, or academic retrieval enhancement, choose an active image provider (Google AI Studio or OpenAI-compatible), then enter the required API keys for image generation, Tavily / Jina, and OpenAlex / Semantic Scholar
-4. **Save Configuration** — Done! Configuration is automatically persisted and the service hot-reloads
-
-> You can reopen the configuration panel at any time via the bottom-left "Settings & More" → "Settings" → "Configuration" tab.
+```bash
+make down
+```
 
 ### Common Commands
 
 | Command | Description |
-|---------|-------------|
-| `make dev` | Start in development mode (with hot-reload) |
-| `make start` | Start in production mode (performance-optimized) |
-| `make dev-daemon` | Start as background daemon |
-| `make stop` | Stop all services |
-| `make check` | Check if prerequisites are installed |
-| `make verify` | Run CI-aligned local checks (backend lint/test + frontend lint/typecheck) |
-| `make clean` | Stop services and clean up temporary files |
-| `make up` | Docker production deployment |
-| `make down` | Stop Docker containers |
-
-## Tech Stack
-
-### Backend
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **LangGraph** | 1.0.6+ | Multi-agent orchestration engine, directed graph state machine |
-| **LangChain** | 1.2.3+ | LLM abstraction layer, tool system, MCP adapters |
-| **FastAPI** | 0.115.0+ | Gateway REST API, async high-performance |
-| **Python** | 3.12+ | Backend runtime |
-| **uv** | Latest | Package manager, replacing pip/poetry |
-| **agent-sandbox** | - | Sandbox code execution |
-| **markitdown** | - | Multi-format document to Markdown conversion |
-
-### Frontend
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **Next.js** | 16 | React meta-framework, App Router + Turbopack |
-| **React** | 19 | UI library |
-| **TypeScript** | 5.x | Type safety |
-| **TailwindCSS** | 4 | Utility-first CSS framework |
-| **Shadcn UI** | - | Base component library |
-| **MagicUI** | - | Modern animation components |
-| **TanStack Query** | - | Server state management |
-| **LangGraph SDK** | - | Agent interaction |
-
-## Project Structure
-
-```
-medrix-flow/
-├── backend/                        # Backend services
-│   ├── packages/harness/medrix_flow/
-│   │   ├── agents/                 # Agent system
-│   │   │   ├── lead_agent/         #   Lead agent (factory + prompts)
-│   │   │   ├── middlewares/        #   Middleware components (incl. security audit, token tracking & visual quality gate)
-│   │   │   ├── memory/             #   Memory extraction, correction detection, visual preference persistence & pluggable storage
-│   │   │   └── thread_state.py     #   Thread state Schema
-│   │   ├── academic/               # Academic research pipeline (multi-source retrieval, dedupe, APA export, evidence store / graph projection)
-│   │   ├── experiments/            # Experiment workflows (CS/AI + bioinformatics, figure routing, bundle export)
-│   │   ├── runtime/                # Runs, message persistence, feedback, and stream bridge
-│   │   ├── sandbox/                # Sandbox execution engine + security auditing
-│   │   ├── subagents/              # Subagent system (incl. academic-researcher, experiment specialists, visual-specialist)
-│   │   ├── tools/                  # Tool collection (incl. academic_research, research_assistant, experiment_lab, visual QA)
-│   │   ├── mcp/                    # MCP protocol integration
-│   │   ├── models/                 # Model factory + Provider patches
-│   │   ├── skills/                 # Skill discovery & loading
-│   │   ├── community/              # Community tools (Tavily/Jina/Firecrawl)
-│   │   └── config/                 # Config system (hot-reload + env var resolution + system agents)
-│   ├── app/gateway/                # FastAPI gateway
-│   │   ├── app.py                  #   Application entry point
-│   │   └── routers/                #   Route modules (threads/artifacts/agents/academic/experiments/runs/...)
-│   ├── tests/                      # Test suite
-│   ├── langgraph.json              # LangGraph entry configuration
-│   └── pyproject.toml              # Python dependencies
-│
-├── frontend/                       # Frontend application
-│   ├── src/
-│   │   ├── app/                    # Next.js App Router routes (including the retained direct /workspace/research page)
-│   │   ├── components/
-│   │   │   ├── ui/                 #   Base UI components
-│   │   │   ├── workspace/          #   Workspace components (chat/agents/settings/sidebar; sidebar main entries are chats and agents)
-│   │   │   └── ai-elements/        #   AI components (reasoning/code block/model selector)
-│   │   ├── core/                   # Core business logic
-│   │   │   ├── threads/            #   Thread management + streaming
-│   │   │   ├── artifacts/          #   Thread artifact inventory, refresh, highlighting, and content loading
-│   │   │   ├── setup/              #   Configuration management (types/API/Hooks)
-│   │   │   ├── i18n/               #   Internationalization (ZH/EN)
-│   │   │   └── settings/           #   Local settings (localStorage)
-│   │   └── hooks/                  # Custom React Hooks
-│   └── package.json
-│
-├── skills/                         # Skill system
-│   ├── public/                     #   Public skill packs (academic/experiment/data/figure/PPT/image/video/podcast/skill helpers)
-│   └── custom/                     #   Custom skills
-│
-├── scripts/                        # Script utilities
-│   ├── serve.sh                    #   Service startup (parallel + health check)
-│   ├── start-daemon.sh             #   Daemon startup
-│   ├── config-upgrade.sh           #   Config version upgrade
-│   └── deploy.sh                   #   Docker deployment
-│
-├── docker/                         # Docker configuration
-│   ├── nginx/                      #   Nginx reverse proxy config
-│   ├── docker-compose.yaml         #   Production deployment orchestration
-│   └── docker-compose-dev.yaml     #   Development environment orchestration
-│
-├── config.example.yaml             # Configuration template (with full field examples)
-├── Makefile                        # Root command entry point
-└── README_en.md                    # This file
-```
+|---|---|
+| `make setup` | Idempotently create local config and env files |
+| `make doctor` | Validate config, env vars, sandbox prerequisites, and DB writability |
+| `make install` | Install backend and frontend dependencies |
+| `make dev` | Start hot-reload development services |
+| `make dev-daemon` | Start development services in the background |
+| `make start` | Start local production mode |
+| `make stop` | Stop local services |
+| `make up` | Build and start Docker production services |
+| `make down` | Stop Docker production services |
+| `make verify` | Run backend lint/test and frontend lint/typecheck/unit/build checks |
 
 ## Configuration
 
-### Frontend UI Configuration (Recommended)
+### Model and App Configuration
 
-MedrixFlow supports managing all model and API key configurations directly through the web interface:
+The main configuration file is `config.yaml`, with `config.example.yaml` as the template. The lookup order includes:
 
-- **Model Management**: Add / edit / delete LLM models, supporting preset providers and OpenAI Compatible mode
-- **Connectivity Testing**: Each model configuration has a "Test" button that dynamically instantiates the Provider to verify availability
-- **Tool API Keys**: Configure Tavily (web search) and Jina (web scraping) keys
-- **Instant Effect**: Saving automatically writes to `config.yaml` and `.env`, and the service hot-reloads
-- **Capabilities Default On**: Thinking and vision capabilities are enabled by default in model setup; the frontend no longer exposes separate toggles for them
+1. `MEDRIX_FLOW_CONFIG_PATH`
+2. `backend/config.yaml`
+3. Root-level `config.yaml`
 
-**How to open**: Bottom-left "Settings & More" → "Settings" → "Configuration" tab
+Models, tool groups, sandbox provider, checkpointer, memory, research gates, and quality policies are configured there. Use:
 
-### Manual Configuration (Advanced Users)
-
-Edit `config.yaml` in the project root directory directly. Main configuration sections:
-
-| Section | Description |
-|---------|-------------|
-| `models` | LLM model definitions (class paths, API Keys, capability flags such as `supports_thinking`, `supports_reasoning_effort`, and `supports_vision`) |
-| `tools` | Tool definitions (module paths, groups) |
-| `sandbox` | Execution environment (local / Docker / K3s) + `allow_host_bash` security switch |
-| `skills` | Skill directory paths |
-| `memory` | Memory system (enabled, storage, debounce, fact limit, storage backend class path) |
-| `summarization` | Context summarization (trigger strategy, retention policy) |
-| `subagents` | Subagents (timeout configuration) |
-| `channels` | IM channels (Feishu/Slack/Telegram) |
-| `guardrails` | Tool call authorization guards |
-| `token_usage` | Token usage tracking (enabled/disabled) |
-| `checkpointer` | State persistence (memory/sqlite/postgres) |
-
-### Environment Variables
-
-Configuration values prefixed with `$` are automatically resolved as environment variables. Common variables:
-
-- Model API Keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `GOOGLE_API_KEY`
-- Tool / image / academic API Keys: `TAVILY_API_KEY`, `JINA_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `IMAGE_GEN_ACTIVE_PROVIDER`, `IMAGE_GEN_GOOGLE_MODEL`, `IMAGE_GEN_OPENAI_MODEL`, `IMAGE_GEN_OPENAI_BASE_URL`, `IMAGE_GEN_OPENAI_API_KEY`, `GITHUB_TOKEN`, `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`
-- Config overrides: `MEDRIX_FLOW_CONFIG_PATH`, `MEDRIX_FLOW_EXTENSIONS_CONFIG_PATH`
-
-### MCP and Skills Configuration (`extensions_config.json`)
-
-You can copy `extensions_config.example.json` from the project root as a starting point, or manage it from the settings UI.
-
-```json
-{
-  "mcpServers": {
-    "github": {
-      "enabled": true,
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_TOKEN": "$GITHUB_TOKEN" }
-    }
-  }
-}
+```bash
+make config-upgrade
 ```
 
-## Supported Model Providers
+to merge newly added fields into an existing config.
 
-| Provider | Provider Class Path | Notes |
-|----------|---------------------|-------|
-| OpenAI | `langchain_openai:ChatOpenAI` | GPT-4o / GPT-5 / o1 etc. |
-| Anthropic | `langchain_anthropic:ChatAnthropic` | Claude 3.5/4 series |
-| Google Gemini | `langchain_google_genai:ChatGoogleGenerativeAI` | Gemini 2.5 Pro/Flash |
-| DeepSeek | `medrix_flow.models.patched_deepseek:PatchedChatDeepSeek` | DeepSeek V3 / Reasoner |
-| OpenAI Compatible | `langchain_openai:ChatOpenAI` + custom base_url | Huawei ModelArts, Novita, MiniMax, OpenRouter etc. |
+### Extensions Configuration
 
-## Documentation
+MCP servers and skill enablement live in `extensions_config.json`, or in the path specified by `MEDRIX_FLOW_EXTENSIONS_CONFIG_PATH`.
 
-- [Configuration Guide](./backend/docs/CONFIGURATION.md)
-- [Architecture Deep Dive](./backend/docs/ARCHITECTURE.md)
-- [API Reference](./backend/docs/API.md)
-- [File Upload](./backend/docs/FILE_UPLOAD.md)
-- [Path Examples](./backend/docs/PATH_EXAMPLES.md)
-- [Context Summarization](./backend/docs/summarization.md)
-- [Plan Mode](./backend/docs/plan_mode_usage.md)
-- [Setup Guide](./backend/docs/SETUP.md)
+The frontend "Features" page reads:
 
-## License
+```text
+GET /api/features
+```
 
-MIT License — See the [LICENSE](./LICENSE) file for details.
+to show a read-only inventory of agents, MCP tools, and skills. Sensitive environment variables and headers are redacted to key names and configured status only.
 
-## Acknowledgements
+### Compatibility Identifiers
 
-- [LangGraph](https://langchain-ai.github.io/langgraph/) — Graph state machine agent framework
-- [LangChain](https://www.langchain.com/) — LLM application development framework
-- [Next.js](https://nextjs.org/) — React meta-framework
-- [Shadcn UI](https://ui.shadcn.com/) — UI component library
-- All open-source library contributors
+Anaxa 3.0 is the user-facing product name. Some technical identifiers remain unchanged to avoid breaking existing scripts, runtime directories, environment variables, and imports:
+
+- Python import package: `medrix_flow`
+- Compatibility names in Python distribution and workspace packages
+- Environment variables: `MEDRIX_FLOW_*`
+- Runtime directory: `.medrix-flow`
+- Admin header: `x-medrix-admin-token`
+- Some Docker container, Compose project, and cleanup prefixes
+
+These are compatibility identifiers, not the new product brand.
+
+## API Overview
+
+### Feature Inventory
+
+| Route | Description |
+|---|---|
+| `GET /api/features` | Read-only aggregate of agents, MCP tools, and skills |
+
+### Academic Research
+
+| Route | Description |
+|---|---|
+| `POST /api/academic/projects` | Create or reuse an academic project |
+| `POST /api/academic/projects/{project_id}/ingest` | Retrieve, normalize, deduplicate, and build an evidence pool |
+| `POST /api/academic/projects/{project_id}/synthesize` | Generate report, references, evidence map, and audit |
+| `GET /api/academic/projects/{project_id}` | Read the project snapshot |
+| `GET /api/academic/projects/{project_id}/references` | Export references |
+| `GET /api/academic/projects/{project_id}/graph` | Read the literature/evidence graph |
+
+### Research Quest
+
+| Route | Description |
+|---|---|
+| `GET /api/research/quests` | List research quests |
+| `POST /api/research/quests` | Create a research quest |
+| `GET /api/research/quests/{quest_id}` | Read the quest snapshot |
+| `POST /api/research/quests/{quest_id}/advance` | Advance one lifecycle stage |
+| `POST /api/research/quests/{quest_id}/gate` | Record a human gate decision |
+| `GET /api/research/quests/{quest_id}/evidence` | Read evidence mappings |
+| `GET /api/research/quests/{quest_id}/experiments` | Read linked experiments |
+| `GET /api/research/quests/{quest_id}/manuscript` | Read the manuscript workspace |
+
+### Experiments
+
+| Route | Description |
+|---|---|
+| `POST /api/experiments/projects` | Create an experiment project |
+| `POST /api/experiments/projects/{project_id}/execute` | Execute the experiment workflow |
+| `POST /api/experiments/projects/{project_id}/export` | Export the experiment bundle |
+| `GET /api/experiments/projects/{project_id}` | Read the experiment project |
+| `GET /api/experiments/projects/{project_id}/artifacts` | Read experiment artifacts |
+
+### Threads, Runs, Files
+
+| Route | Description |
+|---|---|
+| `GET /api/threads/{thread_id}/runs` | List runs for a thread |
+| `POST /api/threads/{thread_id}/runs/{run_id}/cancel` | Cancel a run |
+| `GET /api/threads/{thread_id}/runs/{run_id}/messages` | Read run messages |
+| `POST /api/threads/{thread_id}/uploads` | Upload files into a thread |
+| `GET /api/threads/{thread_id}/uploads/list` | List uploaded files |
+| `GET /api/threads/{thread_id}/artifacts` | List output artifacts |
+| `GET /api/threads/{thread_id}/artifacts/{path}` | Read or download an artifact |
+| `GET /api/threads/{thread_id}/memory` | Read private memory for the current thread |
+| `POST /api/threads/{thread_id}/memory/reload` | Reload private memory for the current thread |
+
+## Built-In Tools and Skills
+
+Built-in tools:
+
+- `academic_research`: paper retrieval, evidence cards, references, and audits.
+- `research_assistant`: research lifecycle, ledger, gates, quality audits, and `run_pipeline`.
+- `experiment_lab`: experiment execution, figures, metrics, and reproducibility bundles.
+- `manuscript_export`: one-shot LaTeX/BibTeX/audit/PDF export.
+- `citation_audit`: citation key, in-text citation, and claim-support checks for LaTeX.
+- `present_files`: artifact presentation and `.tex` PDF preview.
+- `ask_clarification`: structured user confirmation.
+- `visual_quality_check` / `visual_refinement_check`: visual artifact QA gates.
+- sandbox tools: `bash`, `ls`, `read_file`, `write_file`, and `str_replace`.
+
+Skills are discovered from `skills/public` and `skills/custom`, then injected according to `extensions_config.json`. Bundled public skills cover academic writing, citation curation, empirical methods, scientific figures, data analysis, technical diagrams, presentations, PDFs, and skill/plugin creation.
+
+## Safety and Deployment
+
+- Production should set `MEDRIX_FLOW_ENV=production`.
+- When exposing the UI/API through Nginx, set `MEDRIX_FLOW_UI_PASSWORD`; otherwise protected pages and APIs fail closed.
+- Scripted administration can use `MEDRIX_GATEWAY_ADMIN_TOKEN` with the `x-medrix-admin-token` header.
+- Local sandboxing is for trusted development. Production or untrusted code execution should use `AioSandboxProvider` or provisioner/Kubernetes mode.
+- Bash tool calls go through safety auditing and path isolation; thread virtual paths are constrained to `/mnt/user-data`.
+- External code execution, long experiments, automatic experiment-code modification, and final manuscript release should pass through human gates by default.
+
+## Project Structure
+
+```text
+.
+├── backend/
+│   ├── app/gateway/                 # FastAPI Gateway API
+│   ├── packages/harness/medrix_flow/ # LangGraph agents, tools, research, sandbox
+│   └── tests/                        # backend tests
+├── frontend/
+│   ├── src/app/                      # Next.js app routes
+│   ├── src/components/               # workspace, settings, artifact UI
+│   └── test/                         # frontend tests
+├── skills/
+│   ├── public/                       # bundled skills
+│   └── custom/                       # user skills
+├── docker/
+│   ├── nginx/                        # local and production reverse proxy config
+│   └── provisioner/                  # optional sandbox provisioner
+├── scripts/                          # setup, serve, deploy, doctor helpers
+├── config.example.yaml               # app config template
+└── extensions_config.example.json    # MCP and skills config template
+```
+
+## Development and Verification
+
+Backend:
+
+```bash
+cd backend
+make lint
+make test
+```
+
+Frontend:
+
+```bash
+cd frontend
+pnpm lint
+pnpm typecheck
+pnpm test:unit
+BETTER_AUTH_SECRET=local-dev-secret pnpm build
+```
+
+Full local verification:
+
+```bash
+make verify
+```
+
+## License and Acknowledgements
+
+This project is released under the MIT License. Anaxa builds on LangGraph, Next.js, FastAPI, open-source agent tooling, and ideas from scientific automation projects. Its product stance is a research copilot: models can help with research work, but they do not replace the researcher's judgment, evidence responsibility, or authorship responsibility.
