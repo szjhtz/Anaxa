@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Default configuration
 DEFAULT_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
-DEFAULT_PORT = 8080
+DEFAULT_PORT = 6210
 DEFAULT_CONTAINER_PREFIX = "medrix-flow-sandbox"
 DEFAULT_IDLE_TIMEOUT = 600  # 10 minutes in seconds
 DEFAULT_REPLICAS = 3  # Maximum concurrent sandbox containers
@@ -53,7 +53,7 @@ class AioSandboxProvider(SandboxProvider):
     Configuration options in config.yaml under sandbox:
         use: medrix_flow.community.aio_sandbox:AioSandboxProvider
         image: <container image>
-        port: 8080                      # Base port for local containers
+        port: 6210                      # Base port for local containers
         container_prefix: medrix-flow-sandbox
         idle_timeout: 600               # Idle timeout in seconds (0 to disable)
         replicas: 3                     # Max concurrent sandbox containers (LRU eviction when exceeded)
@@ -136,7 +136,7 @@ class AioSandboxProvider(SandboxProvider):
             "replicas": replicas if replicas is not None else DEFAULT_REPLICAS,
             "mounts": sandbox_config.mounts or [],
             "environment": self._resolve_env_vars(sandbox_config.environment or {}),
-            # provisioner URL for dynamic pod management (e.g. http://provisioner:8002)
+            # provisioner URL for dynamic pod management (e.g. http://provisioner:6204)
             "provisioner_url": getattr(sandbox_config, "provisioner_url", None) or "",
         }
 

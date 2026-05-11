@@ -42,7 +42,7 @@ make docker-logs
 ```bash
 make install        # uv sync
 make dev            # langgraph dev server
-make gateway        # FastAPI gateway on :8001
+make gateway        # FastAPI gateway on :6202
 make lint           # ruff check
 make format         # ruff fix + format
 make test           # full backend test suite
@@ -96,10 +96,10 @@ cd frontend && BETTER_AUTH_SECRET=local-dev-secret pnpm build
 
 MedrixFlow is a full-stack agent runtime with four local processes:
 
-1. **Nginx** (`:2026`) — unified entrypoint.
-2. **LangGraph server** (`:2024`) — agent graph runtime.
-3. **Gateway API** (`:8001`) — FastAPI endpoints for models, MCP config, skills, memory, uploads/artifacts, setup, channels.
-4. **Frontend** (`:3000`) — Next.js app.
+1. **Nginx** (`:6200`) — unified entrypoint.
+2. **LangGraph server** (`:6203`) — agent graph runtime.
+3. **Gateway API** (`:6202`) — FastAPI endpoints for models, MCP config, skills, memory, uploads/artifacts, setup, channels.
+4. **Frontend** (`:6201`) — Next.js app.
 
 Routing through nginx:
 - `/api/langgraph/*` -> LangGraph server

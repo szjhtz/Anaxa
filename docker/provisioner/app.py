@@ -18,7 +18,7 @@ Endpoints:
 Architecture (docker-compose-dev):
     ┌────────────┐  HTTP  ┌─────────────┐  K8s API  ┌──────────────┐
     │ remote     │ ─────▸ │ provisioner │ ────────▸ │  host K8s    │
-    │ _backend   │        │ :8002       │           │  API server  │
+    │ _backend   │        │ :6204       │           │  API server  │
     └────────────┘        └─────────────┘           └──────┬───────┘
                                                            │ creates
                           ┌─────────────┐           ┌──────▼───────┐

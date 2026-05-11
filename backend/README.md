@@ -205,7 +205,7 @@ export OPENAI_API_KEY="your-api-key-here"
 make dev  # Starts LangGraph + Gateway + Frontend + Nginx
 ```
 
-Access at: http://localhost:1000
+Access at: http://localhost:6200
 
 **Backend Only** (from backend directory):
 
@@ -217,7 +217,7 @@ make dev
 make gateway
 ```
 
-Direct access: LangGraph at http://localhost:2024, Gateway at http://localhost:8001
+Direct access: LangGraph at http://localhost:6203, Gateway at http://localhost:6202
 
 ---
 

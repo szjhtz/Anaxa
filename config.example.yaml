@@ -317,8 +317,8 @@ sandbox:
 #   # Recommended: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest (works on both x86_64 and arm64)
 #   # image: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
 #
-#   # Optional: Base port for sandbox containers (default: 8080)
-#   # port: 8080
+#   # Optional: Base port for sandbox containers (default: 6210)
+#   # port: 6210
 
 #   # Optional: Maximum number of concurrent sandbox containers (default: 3)
 #   # When the limit is reached the least-recently-used sandbox is evicted to
@@ -349,7 +349,7 @@ sandbox:
 # Recommended for production or advanced users who want better isolation and scalability.:
 # sandbox:
 #   use: medrix_flow.community.aio_sandbox:AioSandboxProvider
-#   provisioner_url: http://provisioner:8002
+#   provisioner_url: http://provisioner:6204
 
 # ============================================================================
 # Subagents Configuration
@@ -498,10 +498,10 @@ checkpointer:
 # All channels use outbound connections (WebSocket or polling) — no public IP required.
 
 # channels:
-#   # LangGraph Server URL for thread/message management (default: http://localhost:2024)
-#   langgraph_url: http://localhost:2024
-#   # Gateway API URL for auxiliary queries like /models, /memory (default: http://localhost:8001)
-#   gateway_url: http://localhost:8001
+#   # LangGraph Server URL for thread/message management (default: http://localhost:6203)
+#   langgraph_url: http://localhost:6203
+#   # Gateway API URL for auxiliary queries like /models, /memory (default: http://localhost:6202)
+#   gateway_url: http://localhost:6202
 #
 #   # Optional: default mobile/session settings for all IM channels
 #   session:

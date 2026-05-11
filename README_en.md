@@ -129,7 +129,7 @@ This page is an inventory, not an editor. It does not provide create, delete, ed
 ## Architecture
 
 ```text
-                  http://localhost:1000
+                  http://localhost:6200
                           |
                           v
                   +----------------+
@@ -141,7 +141,7 @@ This page is an inventory, not an editor. It does not provide create, delete, ed
                       v        v
         +----------------+   +------------------+
         | LangGraph      |   | Gateway API      |
-        | Server :2024   |   | FastAPI :8001    |
+        | Server :6203   |   | FastAPI :6202    |
         |                |   |                  |
         | Lead agent     |   | models/setup     |
         | middleware     |   | features         |
@@ -158,7 +158,7 @@ This page is an inventory, not an editor. It does not provide create, delete, ed
         +----------------+   +------------------+
 
         +----------------------------------------+
-        | Frontend :3000                         |
+        | Frontend :6201                         |
         | Next.js 16 / React 19 / Tailwind CSS 4 |
         +----------------------------------------+
 ```
@@ -218,17 +218,17 @@ make dev
 Open:
 
 ```text
-http://localhost:1000
+http://localhost:6200
 ```
 
 On first launch, open "Settings & More -> Setup" in the lower-left corner, add at least one chat model and API key, then save.
 
 The development command starts:
 
-- Frontend: `http://localhost:3000`
-- Gateway API: `http://localhost:8001`
-- LangGraph Server: `http://localhost:2024`
-- Unified Nginx entry: `http://localhost:1000`
+- Frontend: `http://localhost:6201`
+- Gateway API: `http://localhost:6202`
+- LangGraph Server: `http://localhost:6203`
+- Unified Nginx entry: `http://localhost:6200`
 
 ### Optional Docker Path
 
@@ -242,7 +242,7 @@ make docker-start
 Open the same URL:
 
 ```text
-http://localhost:1000
+http://localhost:6200
 ```
 
 Stop Docker development mode with:
@@ -270,7 +270,7 @@ make docker-stop
 
 ### Normal Use: Configure in the Frontend
 
-After startup, visit `http://localhost:1000` and open "Settings & More -> Setup":
+After startup, visit `http://localhost:6200` and open "Settings & More -> Setup":
 
 - Add the model provider, model name, and API key.
 - Configure web search, web fetch, academic retrieval, and other tool API keys.

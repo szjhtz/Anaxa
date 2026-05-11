@@ -49,7 +49,7 @@ def main() -> int:
     print("Next steps:")
     print("  1. make install")
     print("  2. make dev")
-    print("  3. Open http://localhost:1000 and configure models in the UI")
+    print("  3. Open http://localhost:6200 and configure models in the UI")
     return 0
 
 

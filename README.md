@@ -129,7 +129,7 @@ claim -> paper_id -> citation_key -> snippet/page/abstract evidence -> support_s
 ## 系统架构
 
 ```text
-                  http://localhost:1000
+                  http://localhost:6200
                           |
                           v
                   +----------------+
@@ -141,7 +141,7 @@ claim -> paper_id -> citation_key -> snippet/page/abstract evidence -> support_s
                       v        v
         +----------------+   +------------------+
         | LangGraph      |   | Gateway API      |
-        | Server :2024   |   | FastAPI :8001    |
+        | Server :6203   |   | FastAPI :6202    |
         |                |   |                  |
         | Lead agent     |   | models/setup     |
         | middleware     |   | features         |
@@ -158,7 +158,7 @@ claim -> paper_id -> citation_key -> snippet/page/abstract evidence -> support_s
         +----------------+   +------------------+
 
         +----------------------------------------+
-        | Frontend :3000                         |
+        | Frontend :6201                         |
         | Next.js 16 / React 19 / Tailwind CSS 4 |
         +----------------------------------------+
 ```
@@ -218,17 +218,17 @@ make dev
 启动后访问：
 
 ```text
-http://localhost:1000
+http://localhost:6200
 ```
 
 首次进入页面后，打开左下角“设置和更多 -> 配置”，添加至少一个聊天模型和 API Key，保存后即可开始新对话。
 
 本地开发服务会同时启动：
 
-- Frontend: `http://localhost:3000`
-- Gateway API: `http://localhost:8001`
-- LangGraph Server: `http://localhost:2024`
-- Nginx unified entry: `http://localhost:1000`
+- Frontend: `http://localhost:6201`
+- Gateway API: `http://localhost:6202`
+- LangGraph Server: `http://localhost:6203`
+- Nginx unified entry: `http://localhost:6200`
 
 ### Docker 可选路径
 
@@ -242,7 +242,7 @@ make docker-start
 访问地址同样是：
 
 ```text
-http://localhost:1000
+http://localhost:6200
 ```
 
 停止 Docker 开发环境：
@@ -270,7 +270,7 @@ make docker-stop
 
 ### 普通用户：在前端配置
 
-启动后进入 `http://localhost:1000`，打开“设置和更多 -> 配置”：
+启动后进入 `http://localhost:6200`，打开“设置和更多 -> 配置”：
 
 - 添加模型 provider、模型名和 API Key。
 - 配置网络搜索、网页抓取、学术检索增强等工具 API Key。

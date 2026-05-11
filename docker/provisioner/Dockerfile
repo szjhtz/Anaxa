@@ -14,6 +14,6 @@ RUN pip install --no-cache-dir \
 WORKDIR /app
 COPY app.py .
 
-EXPOSE 8002
+EXPOSE 6204
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "6204"]

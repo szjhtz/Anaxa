@@ -60,7 +60,7 @@ def test_detect_mode_provisioner_with_url():
     config = """
 sandbox:
   use: medrix_flow.community.aio_sandbox:AioSandboxProvider
-  provisioner_url: http://provisioner:8002
+  provisioner_url: http://provisioner:6204
 """.strip()
 
     assert _detect_mode_with_config(config) == "provisioner"
@@ -71,7 +71,7 @@ def test_detect_mode_ignores_commented_provisioner_url():
     config = """
 sandbox:
   use: medrix_flow.community.aio_sandbox:AioSandboxProvider
-  # provisioner_url: http://provisioner:8002
+  # provisioner_url: http://provisioner:6204
 """.strip()
 
     assert _detect_mode_with_config(config) == "aio"
