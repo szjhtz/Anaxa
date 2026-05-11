@@ -9,7 +9,9 @@ const TITLE_INTRO_RE =
   /^(?:here(?:'s| is)\s+(?:the\s+)?title|the\s+title\s+is)\s*[:：-]\s*/i;
 const TITLE_PROMPT_ECHO_RE =
   /generate a concise title|return only the title|user message:|assistant summary:|^the user\b|^the assistant\b/i;
-const TITLE_MAX_CHARS = 60;
+const GENERIC_SUMMARY_TITLE_RE =
+  /^(?:here(?:'s| is)\s+(?:a\s+)?(?:brief\s+|concise\s+)?summary\s+of\s+(?:the\s+)?(?:conversation|chat)(?:\s+to\s+date)?|(?:the\s+)?(?:conversation|chat)\s+summary|summary\s+of\s+(?:this|the)\s+(?:conversation|chat)|(?:本次|这次|当前)?(?:对话|聊天)(?:的)?(?:总结|小结))\s*[:：。.!！-]*$/i;
+const TITLE_MAX_CHARS = 90;
 
 export function pathOfThread(threadId: string) {
   return `/workspace/chats/${threadId}`;
@@ -63,7 +65,11 @@ export function cleanThreadTitle(title: string | null | undefined) {
     .filter(Boolean);
 
   for (const line of lines) {
-    if (TITLE_PROMPT_ECHO_RE.test(line) || THINK_OPEN_RE.test(line)) {
+    if (
+      TITLE_PROMPT_ECHO_RE.test(line) ||
+      GENERIC_SUMMARY_TITLE_RE.test(line) ||
+      THINK_OPEN_RE.test(line)
+    ) {
       continue;
     }
     return truncateTitle(line);

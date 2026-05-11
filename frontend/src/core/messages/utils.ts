@@ -75,7 +75,7 @@ export function groupMessages<T>(
   }
 
   for (const message of messages) {
-    if (message.name === "todo_reminder") {
+    if (message.name === "todo_reminder" || message.name === "plan_state") {
       continue;
     }
 

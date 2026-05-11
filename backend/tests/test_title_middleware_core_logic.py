@@ -74,6 +74,19 @@ class TestTitleMiddlewareCoreLogic:
 
         assert middleware._should_generate_title(state) is True
 
+    def test_regenerates_title_when_existing_title_is_generic_summary_label(self):
+        _set_test_title_config(enabled=True)
+        middleware = TitleMiddleware()
+        state = {
+            "title": "Here is a summary of the conversation to date:",
+            "messages": [
+                HumanMessage(content="帮我修 LaTeX PDF 编译失败"),
+                AIMessage(content="当前卡在 pdflatex 编译和 references.bib。"),
+            ],
+        }
+
+        assert middleware._should_generate_title(state) is True
+
     def test_generate_title_trims_quotes_and_respects_max_chars(self, monkeypatch):
         _set_test_title_config(max_chars=12)
         middleware = TitleMiddleware()
@@ -199,6 +212,37 @@ class TestTitleMiddlewareCoreLogic:
         }
         result = middleware._generate_title_result(state)
         assert result["title"] == "空标题测试"
+
+    def test_generic_summary_title_falls_back_to_user_topic(self, monkeypatch):
+        """Generic model summary labels should not be accepted as conversation titles."""
+        _set_test_title_config(max_chars=90)
+        middleware = TitleMiddleware()
+        fake_model = MagicMock()
+        fake_model.invoke = MagicMock(
+            return_value=MagicMock(content="Here is a summary of the conversation to date:"),
+        )
+        monkeypatch.setattr(
+            "medrix_flow.agents.middlewares.title_middleware.create_chat_model",
+            lambda **kwargs: fake_model,
+        )
+
+        state = {
+            "messages": [
+                HumanMessage(content="论文文件生成与 LaTeX 编译排错"),
+                AIMessage(content="当前卡点是写文件、复制 references.bib 和 pdflatex 编译。"),
+            ]
+        }
+
+        result = middleware._generate_title_result(state)
+
+        assert result["title"] == "论文文件生成与 LaTeX 编译排错"
+
+    def test_topic_summary_title_is_kept(self):
+        _set_test_title_config(max_chars=90)
+        middleware = TitleMiddleware()
+
+        assert middleware._parse_title("论文文件生成与 LaTeX 编译排错") == "论文文件生成与 LaTeX 编译排错"
+        assert middleware._parse_title("Conversation Summary") == ""
 
     def test_parse_title_strips_reasoning_blocks(self):
         _set_test_title_config(max_chars=80)

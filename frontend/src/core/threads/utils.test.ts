@@ -48,9 +48,24 @@ describe("thread title utilities", () => {
     );
   });
 
+  it("rejects generic conversation summary labels and falls back to the first user message", () => {
+    const thread = makeThread(
+      "Here is a summary of the conversation to date:",
+      "论文文件生成与 LaTeX 编译排错",
+    );
+
+    expect(cleanThreadTitle("Here is a summary of the conversation to date:")).toBe("");
+    expect(cleanThreadTitle("Conversation Summary")).toBe("");
+    expect(cleanThreadTitle("Summary of this conversation")).toBe("");
+    expect(titleOfThread(thread)).toBe("论文文件生成与 LaTeX 编译排错");
+  });
+
   it("keeps normal titles and removes common labels", () => {
     expect(cleanThreadTitle("Title: Claim-Level Evidence Audit")).toBe(
       "Claim-Level Evidence Audit",
+    );
+    expect(cleanThreadTitle("论文文件生成与 LaTeX 编译排错")).toBe(
+      "论文文件生成与 LaTeX 编译排错",
     );
   });
 

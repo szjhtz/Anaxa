@@ -16,7 +16,7 @@ export type RunData = {
 
 export type WorkflowNode = {
   id: string;
-  kind: "user" | "agent" | "subagent" | "tool" | "artifact" | "checkpoint" | "final" | "error" | "event";
+  kind: "user" | "agent" | "decision" | "subagent" | "tool" | "artifact" | "checkpoint" | "final" | "error" | "event";
   label: string;
   status: "pending" | "running" | "success" | "error" | "interrupted";
   summary: string;

@@ -129,6 +129,74 @@ describe("useThreadStream", () => {
     });
   });
 
+  it("records tool-start events so workflow can reconstruct decisions", async () => {
+    mocks.registerThreadRun.mockResolvedValue(undefined);
+    mocks.createRunEvent.mockResolvedValue(undefined);
+
+    renderHook(
+      () =>
+        useThreadStream({
+          threadId: "thread-1",
+          context: {
+            mode: "flash",
+            model_name: undefined,
+            reasoning_effort: undefined,
+          },
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      (capturedOptions?.onCreated as (meta: { thread_id: string; run_id: string }) => void)({
+        thread_id: "thread-1",
+        run_id: "run-1",
+      });
+      (
+        capturedOptions?.onLangChainEvent as (event: {
+          event: string;
+          name: string;
+          run_id?: string;
+          data?: unknown;
+        }) => void
+      )({
+        event: "on_tool_start",
+        name: "record_decision",
+        run_id: "decision-call-1",
+        data: {
+          input: {
+            title: "Choose benchmark discovery",
+            decision_type: "tool_selection",
+            rationale: "Need a benchmark map before experiments.",
+            next_step: "Run dataset_benchmark_discovery.",
+            status: "running",
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(mocks.createRunEvent).toHaveBeenCalledWith(
+        "thread-1",
+        "run-1",
+        expect.objectContaining({
+          event_type: "ai_tool_calls",
+          caller: "assistant",
+          content: expect.objectContaining({
+            tool_calls: [
+              expect.objectContaining({
+                name: "record_decision",
+                id: "decision-call-1",
+                args: expect.objectContaining({
+                  title: "Choose benchmark discovery",
+                }),
+              }),
+            ],
+          }),
+        }),
+      );
+    });
+  });
+
   it("marks ordinary text requests as non-visual", async () => {
     mocks.submit.mockResolvedValue(undefined);
 

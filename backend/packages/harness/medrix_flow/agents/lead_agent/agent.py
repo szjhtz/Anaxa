@@ -8,6 +8,7 @@ from medrix_flow.agents.lead_agent.prompt import apply_prompt_template
 from medrix_flow.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from medrix_flow.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
 from medrix_flow.agents.middlewares.memory_middleware import MemoryMiddleware
+from medrix_flow.agents.middlewares.plan_middleware import PlanMiddleware
 from medrix_flow.agents.middlewares.sandbox_audit_middleware import SandboxAuditMiddleware
 from medrix_flow.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from medrix_flow.agents.middlewares.title_middleware import TitleMiddleware
@@ -238,10 +239,14 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
         middlewares.append(summarization_middleware)
 
     # Add TodoList middleware if plan mode is enabled
-    is_plan_mode = config.get("configurable", {}).get("is_plan_mode", False)
+    cfg = config.get("configurable", {})
+    is_plan_mode = bool(cfg.get("is_plan_mode", False)) and not bool(cfg.get("is_bootstrap", False))
     todo_list_middleware = _create_todo_list_middleware(is_plan_mode)
     if todo_list_middleware is not None:
         middlewares.append(todo_list_middleware)
+
+    if is_plan_mode:
+        middlewares.append(PlanMiddleware())
 
     # Add TitleMiddleware
     middlewares.append(TitleMiddleware())
@@ -355,6 +360,7 @@ def make_lead_agent(config: RunnableConfig):
             "thinking_enabled": thinking_enabled,
             "reasoning_effort": reasoning_effort,
             "is_plan_mode": is_plan_mode,
+            "plan_mode": is_plan_mode,
             "subagent_enabled": subagent_enabled,
             "synthetic_data_mode": synthetic_data_mode,
             "thread_memory_mtime": thread_memory_mtime,
@@ -368,6 +374,7 @@ def make_lead_agent(config: RunnableConfig):
             tools=get_available_tools(
                 model_name=model_name,
                 subagent_enabled=subagent_enabled,
+                plan_mode=False,
                 visual_output_intent=False,
             ) + [setup_agent],
             middleware=_build_middlewares(config, model_name=model_name),
@@ -376,6 +383,7 @@ def make_lead_agent(config: RunnableConfig):
                 max_concurrent_subagents=max_concurrent_subagents,
                 available_skills=set(["bootstrap"]),
                 thread_id=thread_id,
+                plan_mode=False,
                 visual_output_intent=False,
                 synthetic_data_mode=False,
             ),
@@ -389,6 +397,7 @@ def make_lead_agent(config: RunnableConfig):
             model_name=model_name,
             groups=agent_config.tool_groups if agent_config else None,
             subagent_enabled=subagent_enabled,
+            plan_mode=is_plan_mode,
             visual_output_intent=visual_output_intent,
         ),
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
@@ -397,6 +406,7 @@ def make_lead_agent(config: RunnableConfig):
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=agent_name,
             thread_id=thread_id,
+            plan_mode=is_plan_mode,
             visual_output_intent=visual_output_intent,
             synthetic_data_mode=synthetic_data_mode,
         ),

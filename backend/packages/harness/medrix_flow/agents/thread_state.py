@@ -2,6 +2,8 @@ from typing import Annotated, NotRequired, TypedDict
 
 from langchain.agents import AgentState
 
+from medrix_flow.agents.plan_state import PlanState
+
 
 class SandboxState(TypedDict):
     sandbox_id: NotRequired[str | None]
@@ -49,6 +51,7 @@ class ThreadState(AgentState):
     sandbox: NotRequired[SandboxState | None]
     thread_data: NotRequired[ThreadDataState | None]
     title: NotRequired[str | None]
+    plan: NotRequired[PlanState | None]
     artifacts: Annotated[list[str], merge_artifacts]
     todos: NotRequired[list | None]
     uploaded_files: NotRequired[list[dict] | None]

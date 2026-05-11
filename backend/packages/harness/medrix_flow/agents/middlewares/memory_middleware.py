@@ -79,6 +79,8 @@ def _filter_messages_for_memory(messages: list[Any]) -> list[Any]:
     skip_next_ai = False
     for msg in messages:
         msg_type = getattr(msg, "type", None)
+        if getattr(msg, "name", None) in {"todo_reminder", "plan_state"}:
+            continue
 
         if msg_type == "human":
             content_str = _extract_message_text(msg)
