@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Literal, TypedDict
 
@@ -44,6 +45,52 @@ PLAN_LOCKED_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
+_CHINESE_NEGATIVE_APPROVAL_PHRASES: tuple[str, ...] = (
+    "不批准",
+    "不要批准",
+    "别批准",
+    "暂不批准",
+    "先不批准",
+    "不确认",
+    "不要确认",
+    "别确认",
+    "不要执行",
+    "别执行",
+    "先别执行",
+    "不要继续",
+    "别继续",
+    "不是批准",
+    "没有批准",
+)
+_CHINESE_APPROVAL_PHRASES: tuple[str, ...] = (
+    "我批准当前计划",
+    "批准当前计划",
+    "批准这个计划",
+    "批准并执行",
+    "确认并执行",
+    "同意当前计划",
+    "按计划执行",
+    "继续执行",
+    "继续导出",
+    "继续生成",
+    "可以执行",
+    "开始执行",
+)
+_ENGLISH_NEGATIVE_APPROVAL_RE = re.compile(
+    r"\b(do not|don't|dont|not|no|never)\s+(approve|proceed|execute|continue)\b|\bnot\s+approved\b",
+    re.IGNORECASE,
+)
+_ENGLISH_APPROVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bi approve (the )?(current )?plan\b", re.IGNORECASE),
+    re.compile(r"\bapprove and execute\b", re.IGNORECASE),
+    re.compile(r"\bapproved[,.\s]+(continue|proceed|execute)\b", re.IGNORECASE),
+    re.compile(r"\bproceed with (the )?(current )?plan\b", re.IGNORECASE),
+    re.compile(r"\bexecute according to (it|the plan)\b", re.IGNORECASE),
+    re.compile(r"\bcontinue (with )?(the )?(current |approved )?plan\b", re.IGNORECASE),
+    re.compile(r"\bcontinue (the )?(export|generation|execution)\b", re.IGNORECASE),
+    re.compile(r"\bcontinue to (export|generate|execute)\b", re.IGNORECASE),
+)
+
 
 def normalize_plan_items(items: list[str] | None) -> list[str]:
     if not items:
@@ -68,6 +115,50 @@ def plan_is_approved(plan: PlanState | None) -> bool:
     if not plan:
         return False
     return normalize_plan_status(plan.get("status")) in PLAN_ACTIVE_STATUSES
+
+
+def plan_is_pending_approval(plan: PlanState | None) -> bool:
+    if not plan:
+        return False
+    return normalize_plan_status(plan.get("status")) in PLAN_PENDING_STATUSES
+
+
+def is_explicit_plan_approval_message(text: str) -> bool:
+    trimmed = text.strip()
+    if not trimmed:
+        return False
+
+    compact = re.sub(r"\s+", "", trimmed.lower())
+    if any(phrase in compact for phrase in _CHINESE_NEGATIVE_APPROVAL_PHRASES):
+        return False
+    if _ENGLISH_NEGATIVE_APPROVAL_RE.search(trimmed):
+        return False
+
+    return any(phrase in compact for phrase in _CHINESE_APPROVAL_PHRASES) or any(
+        pattern.search(trimmed) for pattern in _ENGLISH_APPROVAL_PATTERNS
+    )
+
+
+def approve_plan_state(plan: PlanState, note: str = "User approved the current plan.") -> PlanState:
+    timestamp = datetime.now(UTC).isoformat()
+    revisions = list(plan.get("revisions") or [])
+    revision_count = int(plan.get("revision_count") or len(revisions) or 0) + 1
+    revisions.append(
+        {
+            "revision_number": revision_count,
+            "source": "user",
+            "note": note,
+            "status": "approved",
+            "updated_at": timestamp,
+        }
+    )
+    return {
+        **plan,
+        "status": "approved",
+        "updated_at": timestamp,
+        "revision_count": revision_count,
+        "revisions": revisions,
+    }
 
 
 def format_plan_for_prompt(plan: PlanState) -> str:

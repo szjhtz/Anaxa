@@ -12,7 +12,15 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
 from langgraph.types import Command
 
-from medrix_flow.agents.plan_state import PLAN_LOCKED_TOOL_NAMES, PlanState, format_plan_for_prompt, plan_is_approved
+from medrix_flow.agents.plan_state import (
+    PLAN_LOCKED_TOOL_NAMES,
+    PlanState,
+    approve_plan_state,
+    format_plan_for_prompt,
+    is_explicit_plan_approval_message,
+    plan_is_approved,
+    plan_is_pending_approval,
+)
 
 
 class PlanMiddlewareState(AgentState):
@@ -38,6 +46,46 @@ def _plan_content(plan: PlanState) -> str:
     return format_plan_for_prompt(plan)
 
 
+def _message_text(message: Any) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        return "\n".join(parts)
+    return ""
+
+
+def _latest_user_text(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if not isinstance(message, HumanMessage):
+            continue
+        if getattr(message, "name", None) in {"plan_state", "todo_reminder"}:
+            continue
+        return _message_text(message)
+    return ""
+
+
+def _plan_reminder(plan: PlanState) -> HumanMessage:
+    return HumanMessage(
+        name="plan_state",
+        content=(
+            "<system_reminder>\n"
+            "Current thread plan:\n"
+            f"{_plan_content(plan)}\n"
+            "If the plan is not approved yet, revise it or ask clarification. "
+            "Do not start final execution until the user confirms the plan. "
+            "If the plan is approved, continue execution according to it.\n"
+            "</system_reminder>"
+        ),
+    )
+
+
 def _blocked_tool_message(request: ToolCallRequest, tool_name: str, status: str | None) -> ToolMessage:
     tool_call_id = str(request.tool_call.get("id") or "missing_id")
     status_label = status or "awaiting_approval"
@@ -45,7 +93,8 @@ def _blocked_tool_message(request: ToolCallRequest, tool_name: str, status: str 
         content=(
             f"Plan approval is required before using `{tool_name}`. "
             f"Current plan status: `{status_label}`. "
-            "Please write or revise the plan first, then wait for the user to confirm it."
+            "Approve the plan from the main conversation card (主对话区), or reply: "
+            "`我批准当前计划，请按计划执行。` Then retry the request."
         ),
         tool_call_id=tool_call_id,
         name=tool_name,
@@ -64,21 +113,16 @@ class PlanMiddleware(AgentMiddleware[PlanMiddlewareState]):
             return None
 
         messages = state.get("messages") or []
+        if isinstance(plan, dict) and plan_is_pending_approval(plan):
+            latest_user_text = _latest_user_text(messages)
+            if is_explicit_plan_approval_message(latest_user_text):
+                approved_plan = approve_plan_state(plan, note=latest_user_text)
+                return {"plan": approved_plan, "messages": [_plan_reminder(approved_plan)]}
+
         if _plan_reminder_in_messages(messages, plan):
             return None
 
-        reminder = HumanMessage(
-            name="plan_state",
-            content=(
-                "<system_reminder>\n"
-                "Current thread plan:\n"
-                f"{_plan_content(plan)}\n"
-                "If the plan is not approved yet, revise it or ask clarification. "
-                "Do not start final execution until the user confirms the plan.\n"
-                "</system_reminder>"
-            ),
-        )
-        return {"messages": [reminder]}
+        return {"messages": [_plan_reminder(plan)]}
 
     @override
     def wrap_tool_call(

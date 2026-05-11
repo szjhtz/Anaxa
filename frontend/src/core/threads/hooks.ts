@@ -18,6 +18,10 @@ import { useUpdateSubtask } from "../tasks/context";
 import type { UploadedFileInfo } from "../uploads";
 import { uploadFiles } from "../uploads";
 
+import {
+  approvePendingPlan,
+  isExplicitPlanApprovalMessage,
+} from "./plan-approval";
 import type { AgentThread, AgentThreadState } from "./types";
 
 export type ToolEndEvent = {
@@ -525,6 +529,24 @@ export function useThreadStream({
       let uploadedFileInfo: UploadedFileInfo[] = [];
 
       try {
+        if (isExplicitPlanApprovalMessage(text)) {
+          const approvedPlan = await approvePendingPlan(
+            threadId,
+            snapshotThread.values?.plan,
+            text,
+          );
+          if (approvedPlan) {
+            setPolledValues({
+              ...(snapshotThread.values ?? {
+                title: "",
+                messages: [],
+                artifacts: [],
+              }),
+              plan: approvedPlan,
+            });
+          }
+        }
+
         // Upload files first if any
         if (message.files && message.files.length > 0) {
           setIsUploading(true);
@@ -676,7 +698,15 @@ export function useThreadStream({
         sendInFlightRef.current = false;
       }
     },
-    [thread, _handleOnStart, t.uploads.uploadingFiles, t.common.thinking, context, queryClient],
+    [
+      thread,
+      snapshotThread.values,
+      _handleOnStart,
+      t.uploads.uploadingFiles,
+      t.common.thinking,
+      context,
+      queryClient,
+    ],
   );
 
   // Merge thread with optimistic messages for display

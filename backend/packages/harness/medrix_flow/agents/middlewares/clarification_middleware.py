@@ -1,7 +1,8 @@
 """Middleware for intercepting clarification requests and presenting them to the user."""
 
+import re
 from collections.abc import Callable
-from typing import override
+from typing import Any, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
@@ -15,6 +16,63 @@ class ClarificationMiddlewareState(AgentState):
     """Compatible with the `ThreadState` schema."""
 
     pass
+
+
+SYNTHETIC_SUBSTITUTABLE_RE = re.compile(
+    r"(experiment|experimental|data|dataset|parameter|metric|baseline|ablation|robustness|figure|table|plot|chart|"
+    r"simulation|simulated|synthetic|sample|seed|effect size|model setting|hyperparameter|appendix|code|pdf|latex|"
+    r"实验|数据|数据集|参数|指标|基线|baseline|消融|鲁棒|图表|作图|绘图|表格|样本|随机种子|效应|模型|超参数|附录|代码|论文|PDF)",
+    re.IGNORECASE,
+)
+
+NON_SUBSTITUTABLE_RE = re.compile(
+    r"(official contest statement|official problem statement|official template|credential|login|"
+    r"destructive|delete|overwrite|官方赛题|官方模板|账号|登录|凭据|删除|覆盖|销毁)",
+    re.IGNORECASE,
+)
+
+STRICT_FORMAT_RE = re.compile(
+    r"((strict|exact|mandated|required|official).{0,40}(template|format|page limit|citation style|author|deadline)|"
+    r"(严格|精确|必须|指定|官方).{0,20}(模板|格式|页数|引用格式|作者|署名|截止))",
+    re.IGNORECASE,
+)
+
+
+def _runtime_synthetic_mode(runtime: Any) -> bool:
+    context = getattr(runtime, "context", None)
+    if isinstance(context, dict) and context.get("synthetic_data_mode"):
+        return True
+
+    config = getattr(runtime, "config", None)
+    if isinstance(config, dict):
+        configurable = config.get("configurable")
+        if isinstance(configurable, dict) and configurable.get("synthetic_data_mode"):
+            return True
+
+    return False
+
+
+def _clarification_text(args: dict) -> str:
+    parts: list[str] = []
+    for key in ("question", "context", "clarification_type"):
+        value = args.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    options = args.get("options")
+    if isinstance(options, list):
+        parts.extend(str(item) for item in options if item is not None)
+    return "\n".join(parts)
+
+
+def _is_synthetic_substitutable_clarification(args: dict) -> bool:
+    text = _clarification_text(args)
+    if not text:
+        return False
+    if NON_SUBSTITUTABLE_RE.search(text):
+        return False
+    if STRICT_FORMAT_RE.search(text) and not SYNTHETIC_SUBSTITUTABLE_RE.search(text):
+        return False
+    return bool(SYNTHETIC_SUBSTITUTABLE_RE.search(text))
 
 
 class ClarificationMiddleware(AgentMiddleware[ClarificationMiddlewareState]):
@@ -99,6 +157,21 @@ class ClarificationMiddleware(AgentMiddleware[ClarificationMiddlewareState]):
             "allow_custom_input": True,
         }
 
+    def _handle_synthetic_substitution(self, request: ToolCallRequest) -> ToolMessage:
+        tool_call_id = request.tool_call.get("id", "")
+        return ToolMessage(
+            content=(
+                "Synthetic Experiment Mode is enabled. Do not ask the user for missing "
+                "personal experiment data, parameters, ablation settings, plotting data, "
+                "or figure/table values. Continue by generating reasonable simulation "
+                "assumptions, synthetic results, analyses, and manuscript-ready artifacts. "
+                "Only ask again if the missing information is an official template, exact "
+                "contest statement, required formatting constraint, credential, or destructive-operation approval."
+            ),
+            tool_call_id=tool_call_id,
+            name="ask_clarification",
+        )
+
     def _handle_clarification(self, request: ToolCallRequest) -> Command:
         """Handle clarification request and return command to interrupt execution.
 
@@ -111,6 +184,11 @@ class ClarificationMiddleware(AgentMiddleware[ClarificationMiddlewareState]):
         # Extract clarification arguments
         args = request.tool_call.get("args", {})
         question = args.get("question", "")
+
+        if _runtime_synthetic_mode(getattr(request, "runtime", None)) and _is_synthetic_substitutable_clarification(args):
+            print("[ClarificationMiddleware] Suppressed substitutable clarification in Synthetic Experiment Mode")
+            print(f"[ClarificationMiddleware] Question: {question}")
+            return Command(update={"messages": [self._handle_synthetic_substitution(request)]})
 
         print("[ClarificationMiddleware] Intercepted clarification request")
         print(f"[ClarificationMiddleware] Question: {question}")

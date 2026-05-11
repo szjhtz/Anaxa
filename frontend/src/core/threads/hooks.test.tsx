@@ -10,8 +10,10 @@ const mocks = vi.hoisted(() => ({
   completeThreadRun: vi.fn(),
   createRunEvent: vi.fn(),
   updateSubtask: vi.fn(),
+  updateState: vi.fn(),
   toastError: vi.fn(),
   submit: vi.fn(),
+  streamValues: { title: "", messages: [], artifacts: [] } as Record<string, unknown>,
 }));
 
 let capturedOptions: Record<string, unknown> | null = null;
@@ -23,7 +25,7 @@ vi.mock("@langchain/langgraph-sdk/react", () => ({
       messages: [],
       isLoading: false,
       isThreadLoading: false,
-      values: { title: "", messages: [], artifacts: [] },
+      values: mocks.streamValues,
       stop: vi.fn(),
       submit: mocks.submit,
     };
@@ -34,6 +36,7 @@ vi.mock("@/core/api", () => ({
   getAPIClient: vi.fn(() => ({
     threads: {
       getState: vi.fn(),
+      updateState: (...args: unknown[]) => mocks.updateState(...args),
     },
   })),
 }));
@@ -86,8 +89,10 @@ describe("useThreadStream", () => {
     mocks.completeThreadRun.mockReset();
     mocks.createRunEvent.mockReset();
     mocks.updateSubtask.mockReset();
+    mocks.updateState.mockReset();
     mocks.toastError.mockReset();
     mocks.submit.mockReset();
+    mocks.streamValues = { title: "", messages: [], artifacts: [] };
   });
 
   it("captures run_id from useStream metadata and sideband-registers it", async () => {
@@ -277,5 +282,104 @@ describe("useThreadStream", () => {
 
     expect(mocks.submit).toHaveBeenCalledOnce();
     expect(mocks.submit.mock.calls[0]?.[1]?.context.synthetic_data_mode).toBe(true);
+  });
+
+  it("approves a pending plan before submitting an explicit approval message", async () => {
+    mocks.updateState.mockResolvedValue(undefined);
+    mocks.submit.mockResolvedValue(undefined);
+    mocks.streamValues = {
+      title: "",
+      messages: [],
+      artifacts: [],
+      plan: {
+        summary: "Generate manuscript bundle",
+        status: "awaiting_approval",
+        revision_count: 1,
+        revisions: [
+          {
+            revision_number: 1,
+            source: "agent",
+            note: "Initial plan",
+            status: "awaiting_approval",
+            updated_at: "2026-05-09T00:00:10Z",
+          },
+        ],
+      },
+    };
+
+    const { result } = renderHook(
+      () =>
+        useThreadStream({
+          threadId: "thread-1",
+          context: {
+            mode: "pro",
+            model_name: undefined,
+            reasoning_effort: undefined,
+          },
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current[1]("thread-1", {
+        text: "我批准当前计划，请按计划执行。",
+        files: [],
+      });
+    });
+
+    expect(mocks.updateState).toHaveBeenCalledWith(
+      "thread-1",
+      expect.objectContaining({
+        values: {
+          plan: expect.objectContaining({
+            status: "approved",
+            revision_count: 2,
+          }),
+        },
+      }),
+    );
+    expect(mocks.updateState.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.submit.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.submit).toHaveBeenCalledOnce();
+  });
+
+  it("does not auto-approve a pending plan for ordinary revision feedback", async () => {
+    mocks.updateState.mockResolvedValue(undefined);
+    mocks.submit.mockResolvedValue(undefined);
+    mocks.streamValues = {
+      title: "",
+      messages: [],
+      artifacts: [],
+      plan: {
+        summary: "Generate manuscript bundle",
+        status: "awaiting_approval",
+        revision_count: 1,
+        revisions: [],
+      },
+    };
+
+    const { result } = renderHook(
+      () =>
+        useThreadStream({
+          threadId: "thread-1",
+          context: {
+            mode: "pro",
+            model_name: undefined,
+            reasoning_effort: undefined,
+          },
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current[1]("thread-1", {
+        text: "请先修改第二阶段，不要执行。",
+        files: [],
+      });
+    });
+
+    expect(mocks.updateState).not.toHaveBeenCalled();
+    expect(mocks.submit).toHaveBeenCalledOnce();
   });
 });

@@ -161,12 +161,12 @@ Plan mode is enabled for this thread.
 
 Workflow:
 1. For complex tasks, create a structured plan before any final execution.
-2. Persist the plan with `write_plan` so it appears in the right-side Plan tab.
+2. Persist the plan with `write_plan` so it appears as an approval card in the main conversation.
 3. Include at least: summary, phases, deliverables, open_questions, acceptance_criteria, and risk_points.
 4. If the plan status is `awaiting_approval` or `needs_revision`, do not start final execution, file production, or other irreversible work.
 5. Use clarification for missing requirements; use the plan for the execution strategy.
 6. Once the user confirms the plan, continue with the approved plan and keep Flow reserved for real execution.
-7. Keep the full plan out of the chat transcript; the Plan tab is the canonical source of truth.
+7. The structured plan state shown in the conversation approval card is the canonical source of truth.
 8. If the task is simple and does not need a plan, answer directly.
 </plan_mode_system>"""
 
@@ -198,11 +198,13 @@ You are {agent_name}, an open-source super agent.
 
 {soul}
 {memory_context}
+{synthetic_section}
 
 <thinking_style>
 - Think concisely and strategically about the user's request BEFORE taking action
 - Break down the task: What is clear? What is ambiguous? What is missing?
 - **PRIORITY CHECK: If anything is unclear, missing, or has multiple interpretations, you MUST ask for clarification FIRST - do NOT proceed with work**
+{synthetic_thinking_override}
 {subagent_thinking}- Never write down your full final answer or report in thinking process, but only outline
 - CRITICAL: After thinking, you MUST provide your actual response to the user. Thinking is for planning, the response is for delivery.
 - Your response must contain the actual answer, not just a reference to what you thought about
@@ -215,6 +217,8 @@ You are {agent_name}, an open-source super agent.
 3. **THIRD**: Only after all clarifications are resolved, proceed with planning and execution
 
 **CRITICAL RULE: Clarification ALWAYS comes BEFORE action. Never start working and clarify mid-execution.**
+
+{synthetic_clarification_override}
 
 **MANDATORY Clarification Scenarios - You MUST call ask_clarification BEFORE starting work when:**
 
@@ -578,6 +582,18 @@ def get_synthetic_data_mode_prompt() -> str:
     return """<synthetic_data_mode>
 Synthetic Experiment Mode is enabled for this thread.
 
+Priority override:
+- This section overrides generic clarification-first guidance for missing personal experiment inputs.
+- Do not ask the user for missing personal experiment data, tunable parameters, ablation settings, plotting data,
+  compute environment, baseline placeholders, code appendix preferences, or figure/table values.
+  Create reasonable assumptions and continue.
+- For a general request like "generate a complete English paper/PDF", default to a full manuscript workflow with
+  mathematical modeling, simulated experiments, tables, figures, ablations, analysis, limitations, LaTeX, and PDF.
+- Ask clarification only for information that cannot be safely replaced by simulation, such as an official contest
+  statement/template, exact page limit, mandated citation style, required author metadata, destructive local actions,
+  or user credentials.
+- If you must ask, explicitly state why Synthetic Experiment Mode cannot substitute that information.
+
 Allowed:
 - When real experiment execution, dependencies, data access, compute, or plotting are blocked, you may complete the paper workflow using formula-based, assumption-driven, or simulated personal experimental data.
 - You may produce complete result tables, ablations, robustness/error analyses, figures, LaTeX, and PDFs from simulated experimental outputs.
@@ -595,6 +611,27 @@ Tool guidance:
 - When using `experiment_lab` for simulated work, pass `synthetic_data_mode=true` and include `metadata.synthetic_data_mode=true` plus assumptions, proposed method, baselines, ablation variables, and robustness checks when available.
 - When using `manuscript_export`, provide a claim map that marks simulation-backed claims as `supported_by_simulation` and includes simulation assumptions/disclosure.
 </synthetic_data_mode>"""
+
+
+def get_synthetic_thinking_override(synthetic_data_mode: bool) -> str:
+    if not synthetic_data_mode:
+        return ""
+    return (
+        "- **SYNTHETIC MODE OVERRIDE**: Treat missing personal experiment data, parameters, ablations, "
+        "plot data, compute resources, and figure/table values as inputs you should synthesize from "
+        "reasonable assumptions, not as blockers for clarification.\n"
+    )
+
+
+def get_synthetic_clarification_override(synthetic_data_mode: bool) -> str:
+    if not synthetic_data_mode:
+        return ""
+    return """**SYNTHETIC EXPERIMENT MODE OVERRIDE:**
+- Do NOT call `ask_clarification` merely because experiment data, parameters, ablation settings, robustness checks, plotting data, code appendix requirements, or compute details are missing.
+- Generate reasonable assumptions, simulated personal experimental outputs, result tables, analysis, and figures yourself.
+- Ask only for non-substitutable information such as official templates, exact contest statements, mandated formatting constraints, credentials, or destructive-operation approval.
+- If a clarification is unavoidable, the question must say why simulation cannot substitute the missing information.
+"""
 
 
 def apply_prompt_template(
@@ -646,6 +683,9 @@ def apply_prompt_template(
         skills_section=skills_section,
         deferred_tools_section=deferred_tools_section,
         memory_context=memory_context,
+        synthetic_section=get_synthetic_data_mode_prompt() if synthetic_data_mode else "",
+        synthetic_thinking_override=get_synthetic_thinking_override(synthetic_data_mode),
+        synthetic_clarification_override=get_synthetic_clarification_override(synthetic_data_mode),
         plan_section=get_plan_prompt_section(plan_mode),
         decision_section=get_decision_prompt_section(),
         subagent_section=subagent_section,
@@ -657,8 +697,5 @@ def apply_prompt_template(
     enabled_skill_names = {s.name for s in load_skills(enabled_only=True)}
     if visual_output_intent and enabled_skill_names & VISUAL_SKILL_NAMES:
         prompt += "\n\n" + get_visual_quality_prompt()
-
-    if synthetic_data_mode:
-        prompt += "\n\n" + get_synthetic_data_mode_prompt()
 
     return prompt + f"\n<current_date>{datetime.now().strftime('%Y-%m-%d, %A')}</current_date>"

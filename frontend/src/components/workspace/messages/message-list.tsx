@@ -32,6 +32,7 @@ import { useThread } from "./context";
 import { MarkdownContent } from "./markdown-content";
 import { MessageGroup } from "./message-group";
 import { MessageListItem } from "./message-list-item";
+import { PlanApprovalCard } from "./plan-approval-card";
 import { MessageListSkeleton } from "./skeleton";
 import { SubtaskCard } from "./subtask-card";
 
@@ -222,6 +223,12 @@ export function MessageList({
             />
           );
         })}
+        <PlanApprovalCard
+          plan={thread.values?.plan}
+          threadId={threadId}
+          onSubmit={sendMessage}
+          isLoading={thread.isLoading}
+        />
         <RunStatusIndicator
           className="my-4"
           threadId={threadId}
