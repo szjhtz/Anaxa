@@ -132,6 +132,33 @@ def test_experiment_service_synthetic_mode_exports_simulation_evidence(tmp_path)
     asyncio.run(db.close())
 
 
+def test_experiment_service_synthetic_mode_autofills_missing_experiment_inputs(tmp_path):
+    paths = _make_paths(tmp_path)
+    paths.ensure_thread_dirs("thread-exp-synthetic-auto")
+    outputs = paths.sandbox_outputs_dir("thread-exp-synthetic-auto")
+
+    service, db = _prepare_service(tmp_path)
+    with patch("medrix_flow.experiments.service.get_paths", return_value=paths):
+        result = asyncio.run(
+            service.run_experiment(
+                thread_id="thread-exp-synthetic-auto",
+                agent_name="cs-ai-lab",
+                topic="Generate a complete simulated modeling paper experiment",
+                dataset_ids=[],
+                output_dir=outputs,
+                metadata={"synthetic_data_mode": True},
+            )
+        )
+
+    assert result.run.status == "success"
+    assert any(path.endswith("synthetic_inputs/synthetic_dataset.csv") for path in result.bundle.export_files)
+    assert any(path.endswith("synthetic_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("ablation_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("robustness_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("claim_support_matrix.json") for path in result.bundle.export_files)
+    asyncio.run(db.close())
+
+
 def test_experiment_service_preserves_empirical_method_contract(tmp_path):
     paths = _make_paths(tmp_path)
     paths.ensure_thread_dirs("thread-exp-empirical")

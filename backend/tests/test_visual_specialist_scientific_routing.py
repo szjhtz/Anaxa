@@ -61,6 +61,9 @@ def test_synthetic_data_mode_prompt_is_explicitly_gated(monkeypatch) -> None:
     assert "<synthetic_data_mode>" in synthetic
     assert "supported_by_simulation" in synthetic
     assert "Never fabricate third-party objective facts" in synthetic
+    assert "SYNTHETIC EXPERIMENT MODE OVERRIDE" in synthetic
+    assert "Do NOT call `ask_clarification` merely because experiment data" in synthetic
+    assert synthetic.index("<synthetic_data_mode>") < synthetic.index("<clarification_system>")
 
 
 def test_visual_quality_tools_require_visual_intent(monkeypatch) -> None:

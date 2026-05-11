@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -160,7 +160,7 @@ describe("ThreadDetailsTrigger", () => {
     document.cookie = "locale=; max-age=0; path=/";
   });
 
-  it("opens a details panel with plan, workflow tree, artifacts, stats, and logs export menu", async () => {
+  it("opens a details panel with workflow tree, artifacts, stats, and logs export menu", async () => {
     mocks.cancelThreadRun.mockResolvedValue(undefined);
     mocks.listThreadRuns.mockResolvedValue([
       {
@@ -275,11 +275,10 @@ describe("ThreadDetailsTrigger", () => {
 
     fireEvent.click(screen.getByTestId("thread-details-trigger"));
 
-    expect(await screen.findByText("计划、Agent 工作流、工具调用、产出文件与运行日志")).toBeInTheDocument();
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
-    expect(screen.getByRole("tab", { name: "计划" })).toBeInTheDocument();
+    expect(await screen.findByText("Agent 工作流、工具调用、产出文件与运行日志")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.queryByRole("tab", { name: "计划" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "导出" })).not.toBeInTheDocument();
-    expect(screen.getByText("暂无计划")).toBeInTheDocument();
 
     const flowTab = screen.getByRole("tab", { name: "流程" });
     fireEvent.pointerDown(flowTab);
@@ -393,8 +392,9 @@ describe("ThreadDetailsTrigger", () => {
     fireEvent.click(screen.getByTestId("thread-details-trigger"));
 
     expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
-    expect(screen.getByText("Plan, agent workflow, tool calls, output files, and run logs")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByText("Agent workflow, tool calls, output files, and run logs")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Plan" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
     expect(screen.getByRole("tab", { name: "Flow" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Stats" })).toBeInTheDocument();
@@ -406,67 +406,6 @@ describe("ThreadDetailsTrigger", () => {
     expect(await screen.findByText("User Goal / Run")).toBeInTheDocument();
     expect(screen.getByText("No visual decision flow yet")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/[详情流程产出统计日志暂无未记录当前整个导出]/);
-  });
-
-  it("shows a structured plan and confirms it before execution", async () => {
-    mockEmptyWorkflow();
-    mocks.updateState.mockResolvedValue(undefined);
-    mocks.sendMessage.mockResolvedValue(undefined);
-    const planThread = makeFakeThread({
-      plan: {
-        summary: "先完成证据地图，再生成论文交付物",
-        phases: ["确认研究问题", "设计实验与消融", "生成成稿"],
-        deliverables: ["experiment_contract.json", "manuscript.tex"],
-        open_questions: ["是否需要中文摘要？"],
-        acceptance_criteria: ["所有结论都有证据来源"],
-        risk_points: ["公开 benchmark 可能需要登录"],
-        status: "awaiting_approval",
-        revision_count: 1,
-        updated_at: "2026-05-09T00:00:10Z",
-        revisions: [
-          {
-            revision_number: 1,
-            source: "agent",
-            note: "Initial plan",
-            status: "awaiting_approval",
-            updated_at: "2026-05-09T00:00:10Z",
-          },
-        ],
-      },
-    });
-
-    render(
-      <ThreadDetailsTrigger threadId="thread-1" currentRunId="run-1" streaming={false} />,
-      { wrapper: makeWrapper("zh-CN", planThread) },
-    );
-
-    fireEvent.click(screen.getByTestId("thread-details-trigger"));
-
-    expect(await screen.findByText("先完成证据地图，再生成论文交付物")).toBeInTheDocument();
-    expect(screen.getByText("确认研究问题")).toBeInTheDocument();
-    expect(screen.getByText("experiment_contract.json")).toBeInTheDocument();
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /确认并执行/ }));
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(mocks.updateState).toHaveBeenCalledWith(
-        "thread-1",
-        expect.objectContaining({
-          values: {
-            plan: expect.objectContaining({
-              status: "approved",
-              revision_count: 2,
-            }),
-          },
-        }),
-      );
-    });
-    expect(mocks.sendMessage).toHaveBeenCalledWith(
-      "我确认当前 Plan 页里的计划，请现在按已确认计划执行。",
-    );
   });
 
   it("does not show an active badge for stale pending runs", async () => {

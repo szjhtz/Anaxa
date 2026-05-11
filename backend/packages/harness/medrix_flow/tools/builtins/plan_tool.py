@@ -30,7 +30,8 @@ def write_plan_tool(
     """Write or revise the structured plan for a complex task.
 
     Use this tool during plan mode to create a structured plan before any
-    final execution. The plan is stored in thread state for the Plan tab.
+    final execution. The plan is stored in thread state for the main
+    conversation approval card.
 
     Args:
         summary: Short summary of the intended work.

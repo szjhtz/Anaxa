@@ -174,27 +174,10 @@ export interface Translations {
     tooltip: string;
     title: string;
     description: string;
-    plan: string;
     flow: string;
     files: string;
     stats: string;
     logs: string;
-    planSummary: string;
-    planPhases: string;
-    planDeliverables: string;
-    planOpenQuestions: string;
-    planAcceptanceCriteria: string;
-    planRisks: string;
-    planRevisionHistory: string;
-    planNoItems: string;
-    noPlanTitle: string;
-    noPlanDescription: string;
-    confirmPlan: string;
-    revisePlan: string;
-    planApproved: string;
-    planApprovalFailed: string;
-    planExecutionMessage: string;
-    revisionPrompt: string;
     taskRun: string;
     noWorkflowTitle: string;
     noWorkflowDescription: string;
@@ -228,8 +211,6 @@ export interface Translations {
       events: string;
       artifacts: string;
       totalDuration: string;
-      updated: string;
-      revisions: string;
       decisionType: string;
       rationale: string;
       nextStep: string;
@@ -249,7 +230,34 @@ export interface Translations {
       error: string;
       event: string;
     };
-    planStatus: {
+    status: {
+      pending: string;
+      running: string;
+      success: string;
+      error: string;
+      interrupted: string;
+      unknown: string;
+    };
+  };
+
+  // Plan approval card in conversation
+  planApproval: {
+    title: string;
+    phases: string;
+    deliverables: string;
+    openQuestions: string;
+    acceptanceCriteria: string;
+    risks: string;
+    noItems: string;
+    updated: string;
+    revisions: string;
+    approveAndExecute: string;
+    revisePlan: string;
+    approvalHint: string;
+    approvedToast: string;
+    approvalFailed: string;
+    executionMessage: string;
+    status: {
       draft: string;
       awaiting_approval: string;
       needs_revision: string;
@@ -257,14 +265,6 @@ export interface Translations {
       executing: string;
       completed: string;
       blocked: string;
-      unknown: string;
-    };
-    status: {
-      pending: string;
-      running: string;
-      success: string;
-      error: string;
-      interrupted: string;
       unknown: string;
     };
   };

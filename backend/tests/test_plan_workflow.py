@@ -83,6 +83,10 @@ def test_plan_middleware_blocks_locked_tools_until_approved() -> None:
     assert isinstance(result, ToolMessage)
     assert result.status == "error"
     assert "Plan approval is required" in str(result.content)
+    assert "Plan tab" not in str(result.content)
+    assert "Plan 页" not in str(result.content)
+    assert "右侧" not in str(result.content)
+    assert "主对话区" in str(result.content)
 
 
 def test_plan_middleware_blocks_file_writes_until_approved() -> None:
@@ -155,6 +159,61 @@ def test_plan_middleware_refreshes_plan_reminder_when_plan_changes() -> None:
     assert "updated_at: 2026-01-02T00:00:00+00:00" in result["messages"][0].content
 
 
+def test_plan_middleware_approves_pending_plan_from_latest_user_message() -> None:
+    middleware = PlanMiddleware()
+    state = {
+        "messages": [
+            HumanMessage(content="我批准当前计划，请按计划执行。"),
+        ],
+        "plan": {
+            "summary": "Generate manuscript bundle",
+            "status": "awaiting_approval",
+            "revision_count": 1,
+            "updated_at": "2026-01-02T00:00:00+00:00",
+            "revisions": [
+                {
+                    "revision_number": 1,
+                    "source": "agent",
+                    "note": "Initial plan",
+                    "status": "awaiting_approval",
+                    "updated_at": "2026-01-02T00:00:00+00:00",
+                }
+            ],
+        },
+    }
+
+    result = middleware.before_model(state, runtime=SimpleNamespace())
+
+    assert result is not None
+    plan = result["plan"]
+    assert plan["status"] == "approved"
+    assert plan["revision_count"] == 2
+    assert plan["revisions"][-1]["source"] == "user"
+    assert "status: approved" in result["messages"][0].content
+
+
+def test_plan_middleware_does_not_approve_revision_feedback() -> None:
+    middleware = PlanMiddleware()
+    state = {
+        "messages": [
+            HumanMessage(content="请先修改第二阶段，不要执行。"),
+        ],
+        "plan": {
+            "summary": "Generate manuscript bundle",
+            "status": "awaiting_approval",
+            "revision_count": 1,
+            "updated_at": "2026-01-02T00:00:00+00:00",
+        },
+    }
+
+    result = middleware.before_model(state, runtime=SimpleNamespace())
+
+    assert result is not None
+    assert "plan" not in result
+    assert result["messages"][0].name == "plan_state"
+    assert "status: awaiting_approval" in result["messages"][0].content
+
+
 def test_plan_prompt_section_is_only_in_plan_mode(monkeypatch) -> None:
     monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, thread_id=None: "")
     monkeypatch.setattr(prompt_module, "get_agent_soul", lambda agent_name: "")
@@ -168,3 +227,5 @@ def test_plan_prompt_section_is_only_in_plan_mode(monkeypatch) -> None:
     assert "<plan_mode_system>" not in normal
     assert "<plan_mode_system>" in plan_mode
     assert "write_plan" in plan_mode
+    assert " ".join(["Plan", "tab"]) not in plan_mode
+    assert "approval card in the main conversation" in plan_mode
