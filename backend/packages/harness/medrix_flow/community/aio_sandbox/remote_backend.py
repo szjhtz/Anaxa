@@ -6,7 +6,7 @@ in k3s.  The backend accesses sandbox pods directly via ``k3s:{NodePort}``.
 Architecture:
     ┌────────────┐  HTTP   ┌─────────────┐  K8s API  ┌──────────┐
     │ this file  │ ──────▸ │ provisioner │ ────────▸ │   k3s    │
-    │ (backend)  │         │ :8002       │           │ :6443    │
+    │ (backend)  │         │ :6204       │           │ :6443    │
     └────────────┘         └─────────────┘           └─────┬────┘
                                                            │ creates
                            ┌─────────────┐           ┌─────▼──────┐
@@ -37,7 +37,7 @@ class RemoteSandboxBackend(SandboxBackend):
 
         sandbox:
           use: medrix_flow.community.aio_sandbox:AioSandboxProvider
-          provisioner_url: http://provisioner:8002
+          provisioner_url: http://provisioner:6204
     """
 
     def __init__(self, provisioner_url: str):
@@ -45,7 +45,7 @@ class RemoteSandboxBackend(SandboxBackend):
 
         Args:
             provisioner_url: URL of the provisioner service
-                             (e.g., ``http://provisioner:8002``).
+                             (e.g., ``http://provisioner:6204``).
         """
         self._provisioner_url = provisioner_url.rstrip("/")
 

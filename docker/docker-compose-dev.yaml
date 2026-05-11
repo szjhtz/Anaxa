@@ -2,16 +2,16 @@
 # Usage: docker-compose -f docker-compose-dev.yaml up --build
 #
 # Services:
-#   - nginx: Reverse proxy (port 1000)
-#   - frontend: Frontend Next.js dev server (port 3000)
-#   - gateway: Backend Gateway API (port 8001)
-#   - langgraph: LangGraph server (port 2024)
+#   - nginx: Reverse proxy (port 6200)
+#   - frontend: Frontend Next.js dev server (port 6201)
+#   - gateway: Backend Gateway API (port 6202)
+#   - langgraph: LangGraph server (port 6203)
 #   - provisioner (optional): Sandbox provisioner (creates Pods in host Kubernetes)
 #
 # Prerequisites:
 #   - Kubernetes cluster + kubeconfig are only required when using provisioner mode.
 #
-# Access: http://localhost:1000
+# Access: http://localhost:6200
 
 services:
   # ── Sandbox Provisioner ────────────────────────────────────────────────
@@ -49,7 +49,7 @@ services:
       - medrix-flow-dev
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6204/health"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -64,7 +64,7 @@ services:
     image: nginx:alpine
     container_name: medrix-flow-nginx
     ports:
-      - "1000:1000"
+      - "6200:6200"
     volumes:
       - ./nginx/${NGINX_CONF:-nginx.conf}:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -84,7 +84,7 @@ services:
       args:
         PNPM_STORE_PATH: ${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}
     container_name: medrix-flow-frontend
-    command: sh -c "cd frontend && pnpm run dev > /app/logs/frontend.log 2>&1"
+    command: sh -c "cd frontend && pnpm exec next dev --webpack --port 6201 > /app/logs/frontend.log 2>&1"
     volumes:
       - ../frontend/src:/app/frontend/src
       - ../frontend/public:/app/frontend/public
@@ -111,7 +111,7 @@ services:
       dockerfile: backend/Dockerfile
       # cache_from disabled - requires manual setup: mkdir -p /tmp/docker-cache-gateway
     container_name: medrix-flow-gateway
-    command: sh -c "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --reload --reload-include='*.yaml .env' > /app/logs/gateway.log 2>&1"
+    command: sh -c "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 6202 --reload --reload-include='*.yaml .env' > /app/logs/gateway.log 2>&1"
     volumes:
       - ../backend/:/app/backend/
       # Preserve the .venv built during Docker image build — mounting the full backend/
@@ -164,7 +164,7 @@ services:
       dockerfile: backend/Dockerfile
       # cache_from disabled - requires manual setup: mkdir -p /tmp/docker-cache-langgraph
     container_name: medrix-flow-langgraph
-    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --host 0.0.0.0 --port 2024 > /app/logs/langgraph.log 2>&1"
+    command: sh -c "cd backend && uv run langgraph dev --no-browser --allow-blocking --host 0.0.0.0 --port 6203 > /app/logs/langgraph.log 2>&1"
     volumes:
       - ../backend/:/app/backend/
       # Preserve the .venv built during Docker image build — mounting the full backend/

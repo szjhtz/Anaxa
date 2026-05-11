@@ -16,7 +16,7 @@ class SandboxInfo:
     """
 
     sandbox_id: str
-    sandbox_url: str  # e.g. http://localhost:8080 or http://k3s:30001
+    sandbox_url: str  # e.g. http://localhost:6210 or http://k3s:30001
     container_name: str | None = None  # Only for local container backend
     container_id: str | None = None  # Only for local container backend
     created_at: float = field(default_factory=time.time)

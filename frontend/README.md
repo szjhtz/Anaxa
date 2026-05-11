@@ -38,7 +38,7 @@ cp .env.example .env
 # Start development server
 pnpm dev
 
-# The app will be available at http://localhost:3000
+# The app will be available at http://localhost:6201
 ```
 
 ### Build
@@ -80,9 +80,9 @@ MEDRIX_FLOW_UI_PASSWORD=choose-a-strong-password
 MEDRIX_GATEWAY_ADMIN_TOKEN=choose-a-separate-admin-token
 
 # Backend API URLs (optional, uses nginx proxy by default)
-NEXT_PUBLIC_BACKEND_BASE_URL="http://localhost:8001"
+NEXT_PUBLIC_BACKEND_BASE_URL="http://localhost:6202"
 # LangGraph API URLs (optional, uses nginx proxy by default)
-NEXT_PUBLIC_LANGGRAPH_BASE_URL="http://localhost:2024"
+NEXT_PUBLIC_LANGGRAPH_BASE_URL="http://localhost:6203"
 ```
 
 ## Project Structure
@@ -138,7 +138,7 @@ src/
 - Backend API URLs are optional; nginx proxy is used by default in development
 - `pnpm build` is most reliable when `BETTER_AUTH_SECRET` is explicitly set
 - In production, protected workspace/API mode fails closed unless `MEDRIX_FLOW_UI_PASSWORD` is configured
-- when running the full stack from the repo root with `make dev`, the unified local entrypoint is `http://localhost:1000`
+- when running the full stack from the repo root with `make dev`, the unified local entrypoint is `http://localhost:6200`
 
 ## License
 

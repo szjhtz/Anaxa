@@ -22,12 +22,12 @@ help:
 	@echo "  make clean           - Clean up processes and temporary files"
 	@echo ""
 	@echo "Docker Production Commands:"
-	@echo "  make up              - Build and start production Docker services (localhost:1000)"
+	@echo "  make up              - Build and start production Docker services (localhost:6200)"
 	@echo "  make down            - Stop and remove production Docker containers"
 	@echo ""
 	@echo "Docker Development Commands:"
 	@echo "  make docker-init     - Pull the sandbox image"
-	@echo "  make docker-start    - Start Docker services (mode-aware from config.yaml, localhost:1000)"
+	@echo "  make docker-start    - Start Docker services (mode-aware from config.yaml, localhost:6200)"
 	@echo "  make docker-stop     - Stop Docker development services"
 	@echo "  make docker-logs     - View Docker development logs"
 	@echo "  make docker-logs-frontend - View Docker frontend logs"
@@ -49,7 +49,7 @@ bootstrap:
 	@echo "=========================================="
 	@echo "Next:"
 	@echo "  1. make dev"
-	@echo "  2. Open http://localhost:1000"
+	@echo "  2. Open http://localhost:6200"
 	@echo "  3. Configure your model/API keys in Settings & More -> Setup"
 
 config:
@@ -152,9 +152,9 @@ stop:
 	@-nginx -c $(PWD)/docker/nginx/nginx.local.conf -p $(PWD) -s quit 2>/dev/null || true
 	@sleep 1
 	@-pkill -9 nginx 2>/dev/null || true
-	@-lsof -ti :2024 | xargs kill -9 2>/dev/null || true
-	@-lsof -ti :8001 | xargs kill -9 2>/dev/null || true
-	@-lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+	@-lsof -ti :6203 | xargs kill -9 2>/dev/null || true
+	@-lsof -ti :6202 | xargs kill -9 2>/dev/null || true
+	@-lsof -ti :6201 | xargs kill -9 2>/dev/null || true
 	@echo "Cleaning up sandbox containers..."
 	@-./scripts/cleanup-containers.sh medrix-flow-sandbox 2>/dev/null || true
 	@echo "✓ All services stopped"

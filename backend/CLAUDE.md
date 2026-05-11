@@ -7,11 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MedrixFlow is a LangGraph-based AI super agent system with a full-stack architecture. The backend provides a "super agent" with sandbox execution, persistent memory, subagent delegation, and extensible tool integration - all operating in per-thread isolated environments.
 
 **Architecture**:
-- **LangGraph Server** (port 2024): Agent runtime and workflow execution
-- **Gateway API** (port 8001): REST API for models, MCP, skills, memory, artifacts, uploads, and local thread cleanup
-- **Frontend** (port 3000): Next.js web interface
-- **Nginx** (port 1000): Unified reverse proxy entry point
-- **Provisioner** (port 8002, optional in Docker dev): Started only when sandbox is configured for provisioner/Kubernetes mode
+- **LangGraph Server** (port 6203): Agent runtime and workflow execution
+- **Gateway API** (port 6202): REST API for models, MCP, skills, memory, artifacts, uploads, and local thread cleanup
+- **Frontend** (port 6201): Next.js web interface
+- **Nginx** (port 6200): Unified reverse proxy entry point
+- **Provisioner** (port 6204, optional in Docker dev): Started only when sandbox is configured for provisioner/Kubernetes mode
 
 **Project Structure**:
 ```
@@ -344,8 +344,8 @@ Bridges external messaging platforms (Feishu, Slack, Telegram) to the MedrixFlow
 8. Outbound → channel callbacks → platform reply
 
 **Configuration** (`config.yaml` -> `channels`):
-- `langgraph_url` - LangGraph Server URL (default: `http://localhost:2024`)
-- `gateway_url` - Gateway API URL for auxiliary commands (default: `http://localhost:8001`)
+- `langgraph_url` - LangGraph Server URL (default: `http://localhost:6203`)
+- `gateway_url` - Gateway API URL for auxiliary commands (default: `http://localhost:6202`)
 - Per-channel configs: `feishu` (app_id, app_secret), `slack` (bot_token, app_token), `telegram` (bot_token)
 
 ### Memory System (`packages/harness/medrix_flow/agents/memory/`)
@@ -461,12 +461,12 @@ From the **project root** directory:
 make dev
 ```
 
-This starts all services and makes the application available at `http://localhost:1000`.
+This starts all services and makes the application available at `http://localhost:6200`.
 
 **Nginx routing**:
-- `/api/langgraph/*` → LangGraph Server (2024)
-- `/api/*` (other) → Gateway API (8001)
-- `/` (non-API) → Frontend (3000)
+- `/api/langgraph/*` → LangGraph Server (6203)
+- `/api/*` (other) → Gateway API (6202)
+- `/` (non-API) → Frontend (6201)
 
 ### Running Backend Services Separately
 
@@ -481,8 +481,8 @@ make gateway
 ```
 
 Direct access (without nginx):
-- LangGraph: `http://localhost:2024`
-- Gateway: `http://localhost:8001`
+- LangGraph: `http://localhost:6203`
+- Gateway: `http://localhost:6202`
 
 ### Frontend Configuration
 

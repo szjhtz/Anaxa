@@ -10,7 +10,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:6201",
     trace: "retain-on-failure",
   },
   projects: [
@@ -22,7 +22,7 @@ export default defineConfig({
   webServer: {
     command: "pnpm dev",
     cwd: ".",
-    url: "http://localhost:3000",
+    url: "http://localhost:6201",
     reuseExistingServer: !process.env.CI,
     env: {
       SKIP_ENV_VALIDATION: "1",

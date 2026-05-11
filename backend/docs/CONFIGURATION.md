@@ -203,7 +203,7 @@ This mode runs each sandbox in an isolated Kubernetes Pod on your **host machine
 ```yaml
 sandbox:
    use: medrix_flow.community.aio_sandbox:AioSandboxProvider
-   provisioner_url: http://provisioner:8002
+   provisioner_url: http://provisioner:6204
 ```
 
 When using Docker development (`make docker-start`), MedrixFlow starts the `provisioner` service only if this provisioner mode is configured. In local or plain Docker sandbox modes, `provisioner` is skipped.
@@ -222,7 +222,7 @@ sandbox:
 ```yaml
 sandbox:
   use: medrix_flow.community.aio_sandbox:AioSandboxProvider
-  port: 8080
+  port: 6210
   auto_start: true
   container_prefix: medrix-flow-sandbox
 
@@ -321,7 +321,7 @@ MedrixFlow searches for configuration in this order:
 
 ### "Docker sandbox fails to start"
 - Ensure Docker is running
-- Check port 8080 (or configured port) is available
+- Check port 6210 (or configured port) is available
 - Verify Docker image is accessible
 
 ## Examples

@@ -7,7 +7,7 @@ The **Sandbox Provisioner** is a FastAPI service that dynamically manages sandbo
 ```
 ┌────────────┐  HTTP  ┌─────────────┐  K8s API  ┌──────────────┐
 │  Backend   │ ─────▸ │ Provisioner │ ────────▸ │  Host K8s    │
-│  (gateway/ │        │   :8002     │           │  API Server  │
+│  (gateway/ │        │   :6204     │           │  API Server  │
 │ langgraph) │        └─────────────┘           └──────┬───────┘
 └────────────┘                                          │ creates
                                                         │
@@ -206,24 +206,24 @@ The compose file:
 
 ```bash
 # Health check
-curl http://localhost:8002/health
+curl http://localhost:6204/health
 
 # Create a sandbox (via provisioner container for internal DNS)
-docker exec medrix-flow-provisioner curl -X POST http://localhost:8002/api/sandboxes \
+docker exec medrix-flow-provisioner curl -X POST http://localhost:6204/api/sandboxes \
   -H "Content-Type: application/json" \
   -d '{"sandbox_id":"test-001","thread_id":"thread-001"}'
 
 # Check sandbox status
-docker exec medrix-flow-provisioner curl http://localhost:8002/api/sandboxes/test-001
+docker exec medrix-flow-provisioner curl http://localhost:6204/api/sandboxes/test-001
 
 # List all sandboxes
-docker exec medrix-flow-provisioner curl http://localhost:8002/api/sandboxes
+docker exec medrix-flow-provisioner curl http://localhost:6204/api/sandboxes
 
 # Verify Pod and Service in K8s
 kubectl get pod,svc -n medrix-flow -l sandbox-id=test-001
 
 # Delete sandbox
-docker exec medrix-flow-provisioner curl -X DELETE http://localhost:8002/api/sandboxes/test-001
+docker exec medrix-flow-provisioner curl -X DELETE http://localhost:6204/api/sandboxes/test-001
 ```
 
 ### Verify from Backend Containers
@@ -232,7 +232,7 @@ Once a sandbox is created, the backend containers (gateway, langgraph) can acces
 
 ```bash
 # Get sandbox URL from provisioner
-SANDBOX_URL=$(docker exec medrix-flow-provisioner curl -s http://localhost:8002/api/sandboxes/test-001 | jq -r .sandbox_url)
+SANDBOX_URL=$(docker exec medrix-flow-provisioner curl -s http://localhost:6204/api/sandboxes/test-001 | jq -r .sandbox_url)
 
 # Test from gateway container
 docker exec medrix-flow-gateway curl -s $SANDBOX_URL/v1/sandbox

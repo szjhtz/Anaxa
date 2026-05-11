@@ -16,7 +16,7 @@ COPY frontend ./frontend
 # ── Dev: install only, CMD is overridden by docker-compose ───────────────────
 FROM base AS dev
 RUN cd /app/frontend && pnpm install --frozen-lockfile
-EXPOSE 3000
+EXPOSE 6201
 
 # ── Builder: install + compile Next.js ───────────────────────────────────────
 FROM base AS builder
@@ -31,5 +31,5 @@ RUN corepack enable && corepack install -g pnpm@10.26.2
 RUN pnpm config set store-dir ${PNPM_STORE_PATH}
 WORKDIR /app
 COPY --from=builder /app/frontend ./frontend
-EXPOSE 3000
-CMD ["sh", "-c", "cd /app/frontend && pnpm start"]
+EXPOSE 6201
+CMD ["sh", "-c", "cd /app/frontend && pnpm exec next start --port 6201"]

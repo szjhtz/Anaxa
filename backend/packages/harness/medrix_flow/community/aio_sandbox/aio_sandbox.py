@@ -19,7 +19,7 @@ class AioSandbox(Sandbox):
 
         Args:
             id: Unique identifier for this sandbox instance.
-            base_url: URL of the sandbox API (e.g., http://localhost:8080).
+            base_url: URL of the sandbox API (e.g., http://localhost:6210).
             home_dir: Home directory inside the sandbox. If None, will be fetched from the sandbox.
         """
         super().__init__(id)

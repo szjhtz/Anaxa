@@ -12,7 +12,7 @@ MedrixFlow Frontend is a Next.js 16 web interface for an AI agent system. It com
 
 | Command | Purpose |
 |---------|---------|
-| `pnpm dev` | Dev server with Turbopack (http://localhost:3000) |
+| `pnpm dev` | Dev server with Turbopack (http://localhost:6201) |
 | `pnpm build` | Production build |
 | `pnpm check` | Lint + type check (run before committing) |
 | `pnpm lint` | ESLint only |
@@ -82,8 +82,8 @@ The frontend is a stateful chat application. Users create **threads** (conversat
 
 Backend API URLs are optional; an nginx proxy is used by default:
 ```
-NEXT_PUBLIC_BACKEND_BASE_URL=http://localhost:8001
-NEXT_PUBLIC_LANGGRAPH_BASE_URL=http://localhost:2024
+NEXT_PUBLIC_BACKEND_BASE_URL=http://localhost:6202
+NEXT_PUBLIC_LANGGRAPH_BASE_URL=http://localhost:6203
 ```
 
 Requires Node.js 22+ and pnpm 10.26.2+.

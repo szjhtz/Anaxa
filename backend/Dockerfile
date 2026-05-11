@@ -33,8 +33,8 @@ COPY backend ./backend
 RUN --mount=type=cache,target=/root/.cache/uv \
     sh -c "cd backend && uv sync"
 
-# Expose ports (gateway: 8001, langgraph: 2024)
-EXPOSE 8001 2024
+# Expose ports (gateway: 6202, langgraph: 6203)
+EXPOSE 6202 6203
 
 # Default command (can be overridden in docker-compose)
-CMD ["sh", "-c", "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001"]
+CMD ["sh", "-c", "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 6202"]
