@@ -1,14 +1,3 @@
-import {
-  CompassIcon,
-  GraduationCapIcon,
-  ImageIcon,
-  MicroscopeIcon,
-  PenLineIcon,
-  ShapesIcon,
-  SparklesIcon,
-  VideoIcon,
-} from "lucide-react";
-
 import type { Translations } from "./types";
 
 export const enUS: Translations = {
@@ -113,55 +102,9 @@ export const enUS: Translations = {
       "You already have text in the input. Choose how to send it.",
     followupConfirmAppend: "Append & send",
     followupConfirmReplace: "Replace & send",
-    suggestions: [
-      {
-        suggestion: "Write",
-        prompt: "Write a blog post about the latest trends on [topic]",
-        icon: PenLineIcon,
-      },
-      {
-        suggestion: "Research",
-        prompt:
-          "Conduct a deep dive research on [topic], and summarize the findings.",
-        icon: MicroscopeIcon,
-      },
-      {
-        suggestion: "Collect",
-        prompt: "Collect data from [source] and create a report.",
-        icon: ShapesIcon,
-      },
-      {
-        suggestion: "Learn",
-        prompt: "Learn about [topic] and create a tutorial.",
-        icon: GraduationCapIcon,
-      },
-    ],
-    suggestionsCreate: [
-      {
-        suggestion: "Webpage",
-        prompt: "Create a webpage about [topic]",
-        icon: CompassIcon,
-      },
-      {
-        suggestion: "Image",
-        prompt: "Create an image about [topic]",
-        icon: ImageIcon,
-      },
-      {
-        suggestion: "Video",
-        prompt: "Create a video about [topic]",
-        icon: VideoIcon,
-      },
-      {
-        type: "separator",
-      },
-      {
-        suggestion: "Skill",
-        prompt:
-          "We're going to build a new skill step by step with `skill-creator`. To start, what do you want this skill to do?",
-        icon: SparklesIcon,
-      },
-    ],
+    syntheticExperimentMode: "Simulation mode",
+    syntheticExperimentModeDescription:
+      "Allow simulated personal experiment data; literature, baselines, and public benchmarks must remain real.",
   },
 
   // Sidebar
@@ -202,7 +145,7 @@ export const enUS: Translations = {
     nameStepAlreadyExistsError: "An agent with this name already exists",
     nameStepCheckError: "Could not verify name availability — please try again",
     nameStepBootstrapMessage:
-      "The new custom agent name is {name}. Let's bootstrap it's **SOUL**.",
+      "The new custom agent name is {name}. Let's bootstrap its **SOUL**.",
     agentCreated: "Agent created!",
     startChatting: "Start chatting",
     backToGallery: "Back to workspace",
@@ -225,6 +168,10 @@ export const enUS: Translations = {
     visitGithub: "Anaxa on GitHub",
     settingsAndMore: "Settings and more",
     about: "About Anaxa",
+    switchToEnglish: "Switch to English",
+    switchToChinese: "Switch to Chinese",
+    languageEnglish: "English",
+    languageChinese: "Chinese",
   },
 
   // Conversation
@@ -239,6 +186,62 @@ export const enUS: Translations = {
     error: "Run ended with an error",
     interrupted: "Run interrupted",
     lastEvent: (time: string) => `Last event ${time}`,
+  },
+
+  threadDetails: {
+    trigger: "Details",
+    tooltip: "View workflow, output files, stats, and run logs",
+    title: "Details",
+    description: "Agent workflow, tool calls, output files, and run logs",
+    flow: "Flow",
+    files: "Files",
+    stats: "Stats",
+    logs: "Logs",
+    taskRun: "Task / Run",
+    noWorkflowTitle: "No visual decision flow yet",
+    noWorkflowDescription:
+      "This run has no restorable agent planning, decision, or tool-step events yet. Output files are available in the Files tab.",
+    noWorkflowEventsTitle: "No workflow events yet",
+    noWorkflowEventsDescription:
+      "The run is registered, but no visible agent event has been recorded yet.",
+    noSummary: "No summary available.",
+    currentRun: "Current Run",
+    wholeThread: "Whole Thread",
+    stopCurrentTask: "Stop current task",
+    stopRequested: "Stop request sent",
+    stopFailed: "Failed to stop task",
+    exportWorkflowJSON: "Export run trace JSON",
+    activeRunPolling:
+      "Backend run is still active. The details panel is polling for new events.",
+    streaming: "Streaming",
+    noFilesTitle: "No output files yet",
+    noFilesDescription:
+      "Generated PDFs, tables, images, or code files will appear here.",
+    noLogsTitle: "No run logs yet",
+    noLogsDescription:
+      "Tool calls, subtasks, file outputs, and status events will be recorded after the run starts.",
+    unrecorded: "Not recorded",
+    labels: {
+      status: "Status",
+      caller: "Caller",
+      seq: "Seq",
+      event: "Event",
+      run: "Run",
+      started: "Started",
+      lastEvent: "Last Event",
+      duration: "Duration",
+      events: "Events",
+      artifacts: "Artifacts",
+      totalDuration: "Total Duration",
+    },
+    status: {
+      pending: "Pending",
+      running: "Running",
+      success: "Complete",
+      error: "Error",
+      interrupted: "Interrupted",
+      unknown: "Unknown",
+    },
   },
 
   // Chats

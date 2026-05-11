@@ -18,6 +18,8 @@ def test_experiment_lab_skill_documents_iterative_experiment_loop():
     assert "`keep`, `discard`, or `crash`" in text
     assert "experiment_contract.json" in text
     assert "claim_support_matrix.json" in text
+    assert "simulation_assumptions.json" in text
+    assert "supported_by_simulation" in text
     assert "dataset_benchmark_discovery" in text
     assert "matlab_execution" in text
 

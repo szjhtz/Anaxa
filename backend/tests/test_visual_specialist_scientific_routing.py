@@ -45,6 +45,24 @@ def test_visual_prompt_requires_visual_intent(monkeypatch) -> None:
     assert "<visual_quality_system>" in visual
 
 
+def test_synthetic_data_mode_prompt_is_explicitly_gated(monkeypatch) -> None:
+    from medrix_flow.agents.lead_agent import prompt as prompt_module
+
+    monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, thread_id=None: "")
+    monkeypatch.setattr(prompt_module, "get_agent_soul", lambda agent_name: "")
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda available_skills=None: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda: "")
+    monkeypatch.setattr(prompt_module, "load_skills", lambda enabled_only=True: [])
+
+    normal = prompt_module.apply_prompt_template()
+    synthetic = prompt_module.apply_prompt_template(synthetic_data_mode=True)
+
+    assert "<synthetic_data_mode>" not in normal
+    assert "<synthetic_data_mode>" in synthetic
+    assert "supported_by_simulation" in synthetic
+    assert "Never fabricate third-party objective facts" in synthetic
+
+
 def test_visual_quality_tools_require_visual_intent(monkeypatch) -> None:
     from medrix_flow.tools import tools as tools_module
 

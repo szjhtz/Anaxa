@@ -182,4 +182,32 @@ describe("useThreadStream", () => {
     expect(mocks.submit).toHaveBeenCalledOnce();
     expect(mocks.submit.mock.calls[0]?.[1]?.context.visual_output_intent).toBe(true);
   });
+
+  it("passes synthetic data mode through thread context", async () => {
+    mocks.submit.mockResolvedValue(undefined);
+
+    const { result } = renderHook(
+      () =>
+        useThreadStream({
+          threadId: "thread-1",
+          context: {
+            mode: "flash",
+            model_name: undefined,
+            reasoning_effort: undefined,
+            synthetic_data_mode: true,
+          },
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current[1]("thread-1", {
+        text: "帮我完成一篇实验论文",
+        files: [],
+      });
+    });
+
+    expect(mocks.submit).toHaveBeenCalledOnce();
+    expect(mocks.submit.mock.calls[0]?.[1]?.context.synthetic_data_mode).toBe(true);
+  });
 });

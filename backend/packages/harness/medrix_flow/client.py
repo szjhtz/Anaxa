@@ -196,6 +196,7 @@ class MedrixFlowClient:
             "is_plan_mode": overrides.get("plan_mode", self._plan_mode),
             "subagent_enabled": overrides.get("subagent_enabled", self._subagent_enabled),
             "visual_output_intent": overrides.get("visual_output_intent", False),
+            "synthetic_data_mode": overrides.get("synthetic_data_mode", False),
         }
         return RunnableConfig(
             configurable=configurable,
@@ -212,6 +213,7 @@ class MedrixFlowClient:
             cfg.get("is_plan_mode"),
             cfg.get("subagent_enabled"),
             cfg.get("visual_output_intent"),
+            cfg.get("synthetic_data_mode"),
             cfg.get("thread_id"),
             _thread_memory_mtime(cfg.get("thread_id")),
         )
@@ -224,6 +226,7 @@ class MedrixFlowClient:
         model_name = cfg.get("model_name")
         subagent_enabled = cfg.get("subagent_enabled", False)
         visual_output_intent = bool(cfg.get("visual_output_intent", False))
+        synthetic_data_mode = bool(cfg.get("synthetic_data_mode", False))
         max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
         thread_id = cfg.get("thread_id")
 
@@ -245,6 +248,7 @@ class MedrixFlowClient:
                 agent_name=self._agent_name,
                 thread_id=thread_id,
                 visual_output_intent=visual_output_intent,
+                synthetic_data_mode=synthetic_data_mode,
             ),
             "state_schema": ThreadState,
         }
@@ -393,7 +397,8 @@ class MedrixFlowClient:
         self._ensure_agent(config)
 
         state: dict[str, Any] = {"messages": [HumanMessage(content=message)]}
-        context = {"thread_id": thread_id}
+        context = dict(config.get("configurable", {}))
+        context["thread_id"] = thread_id
         if self._agent_name:
             context["agent_name"] = self._agent_name
 

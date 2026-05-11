@@ -609,6 +609,9 @@ export function useThreadStream({
                 Boolean(extraContext?.visual_output_intent) ||
                 Boolean(context.visual_output_intent) ||
                 hasVisualOutputIntent(text),
+              synthetic_data_mode:
+                Boolean(extraContext?.synthetic_data_mode) ||
+                Boolean(context.synthetic_data_mode),
               reasoning_effort:
                 context.reasoning_effort ??
                 (context.mode === "ultra"

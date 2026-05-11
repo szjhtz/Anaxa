@@ -19,6 +19,9 @@ Use this skill when the user asks for:
 2. When the user asks for latest datasets, benchmarks, leaderboards, baselines, or experiment-ready evidence, call `dataset_benchmark_discovery` before drafting conclusions.
 3. For large academic tasks, delegate to `task` with `subagent_type="academic-researcher"` so the main thread stays clean.
 4. Do not invent references, DOI metadata, datasets, benchmark scores, or claims that are not grounded in generated evidence.
+   In Synthetic Experiment Mode, simulated personal experiment outputs may support
+   paper workflow completion, but third-party literature, baseline, leaderboard,
+   benchmark, DOI, and dataset facts still cannot be fabricated.
 5. Treat the generated `report.md`, `references.md`, `references.bib`, `evidence_map.json`, and `dataset_benchmark_map.json` as source material with different roles: literature support is not the same as executed experiment support.
 6. When writing final prose in chat, use the artifact bundle first and only then polish wording.
 7. Follow the user's requested reference style. Use APA 7 only when no style is specified.
@@ -56,7 +59,9 @@ For a paper, manuscript, review article draft, or experiment paper:
 - create or reuse `references.bib`
 - use `dataset_benchmark_map.json` to name candidate datasets/benchmarks only after checking access and version/date
 - use `experiment_lab` outputs for executed results, ablations, robustness checks, and error analysis
-- keep experimental claims unsupported unless `claim_support_matrix.json` marks them `supported_by_experiment`
+- keep experimental claims unsupported unless `claim_support_matrix.json` marks them
+  `supported_by_experiment`; in Synthetic Experiment Mode, `supported_by_simulation`
+  is acceptable only when simulation assumptions/disclosure artifacts are present
 - write LaTeX with exact BibTeX keys from `references.bib`
 - call `manuscript_export(tex_content=..., bibtex_content=..., filename_stem="manuscript")`
 - if `manuscript_export` reports missing keys, unsupported claims, blocked `\nocite{*}`, or compile errors, fix the inputs and retry before final delivery

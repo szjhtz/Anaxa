@@ -8,6 +8,7 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
     model_name: undefined,
     mode: undefined,
     reasoning_effort: undefined,
+    synthetic_data_mode: false,
   },
   layout: {
     sidebar_collapsed: false,

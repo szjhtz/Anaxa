@@ -20,6 +20,10 @@ This skill governs MedrixFlow's experiment workflow. It does not replace executi
 ## Core Rules
 
 - Do not invent datasets, metrics, plots, baselines, enrichments, or scientific conclusions.
+- Exception: when thread context enables Synthetic Experiment Mode, personal
+  experiment data may be simulated from explicit assumptions to complete the
+  manuscript workflow. Public literature, DOI, baseline, leaderboard, benchmark,
+  license, and dataset-version facts must still be real and verifiable.
 - For benchmark-driven work, use `dataset_benchmark_discovery` first to map candidate datasets, leaderboards, metrics, access limits, and baseline/SOTA hints.
 - If the task requires actual experimental output, prefer the `experiment_lab` tool instead of ad hoc reasoning.
 - Ask for missing inputs before running a workflow when the absence would invalidate the result:
@@ -106,6 +110,10 @@ When using the structured pipeline, prefer returning a concise summary plus arti
 - `robustness_results.json`
 - `error_analysis.md`
 - `claim_support_matrix.json`
+- Synthetic Experiment Mode also requires `simulated_experiment_contract.json`,
+  `simulation_assumptions.json`, and `synthetic_results.json`.
+- Synthetic-mode claim maps should use `supported_by_simulation`, not
+  `supported_by_experiment`, for simulated personal experimental outputs.
 - `figure_manifest.json`
 - `figures/`
 - `tables/`
@@ -126,8 +134,10 @@ Use `experiment_lab` when the user needs execution, metrics, or figure generatio
 - `target_column` for supervised CS/AI work
 - `metadata_path`, `sample_id_column`, and `group_column` for bulk expression tasks when available
 - `linked_academic_project_id` when the experiment should feed a formal report
+- `synthetic_data_mode=true` when Synthetic Experiment Mode is enabled
 - `metadata` with empirical method, estimand, variables, identification assumptions,
-  and required outputs for empirical research tasks
+  and required outputs for empirical research tasks; in Synthetic Experiment Mode,
+  include `synthetic_data_mode=true` and simulation assumptions when known
 
 ## MATLAB Routing
 

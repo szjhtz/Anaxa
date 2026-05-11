@@ -86,6 +86,7 @@ _EMPIRICAL_METADATA_KEYS = {
     "treatment_time",
     "unit_id",
 }
+_SYNTHETIC_MODE_KEYS = {"synthetic_data_mode", "simulation_mode", "simulated_experiment"}
 
 
 def _artifact_type_for(path: Path) -> str:
@@ -312,6 +313,15 @@ class ExperimentService:
         tables_dir = export_dir / "tables"
         figures_dir.mkdir(parents=True, exist_ok=True)
         tables_dir.mkdir(parents=True, exist_ok=True)
+        self._prepare_synthetic_inputs_if_needed(
+            project=project,
+            export_dir=export_dir,
+            analysis_type=analysis_type,
+            target_column=target_column,
+        )
+        if self._is_synthetic_mode(project.metadata):
+            project.updated_at = now_iso()
+            project = await self._repository.update_project(project)
 
         try:
             if project.domain == "bioinformatics":
@@ -382,6 +392,12 @@ class ExperimentService:
         )
         if empirical_contract is not None:
             export_files = [*export_files, empirical_contract]
+        if self._is_synthetic_mode(project.metadata):
+            synthetic_dataset_path = project.metadata.get("synthetic_dataset_path")
+            if synthetic_dataset_path:
+                synthetic_path = Path(str(synthetic_dataset_path))
+                if synthetic_path.exists():
+                    export_files = [*export_files, synthetic_path]
         evidence_artifacts = self._write_experiment_evidence_artifacts(
             export_dir=export_dir,
             project=project,
@@ -405,6 +421,7 @@ class ExperimentService:
                     "linked_academic_project_id": project.linked_academic_project_id,
                     "empirical_method": project.metadata.get("empirical_method"),
                     "methodology_skill": project.metadata.get("skill"),
+                    "synthetic_data_mode": self._is_synthetic_mode(project.metadata),
                 },
                 created_at=now_iso(),
             )
@@ -439,6 +456,7 @@ class ExperimentService:
         analysis_type: str,
     ) -> list[Path]:
         metadata = project.metadata or {}
+        synthetic_mode = self._is_synthetic_mode(metadata)
         metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else {}
         summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
         dataset_paths = [str(path) for path in self._resolve_dataset_paths(project)]
@@ -467,7 +485,12 @@ class ExperimentService:
             "robustness_checks": metadata.get("robustness_checks", []),
             "error_analysis": "Generated from predictions/residuals where available.",
             "compute_budget": metadata.get("compute_budget"),
-            "claim_gate": "Do not state manuscript-level experimental superiority unless claim_support_matrix.json marks the claim supported_by_experiment.",
+            "synthetic_data_mode": synthetic_mode,
+            "claim_gate": (
+                "Simulation-backed claims must use supported_by_simulation and include simulation assumptions."
+                if synthetic_mode
+                else "Do not state manuscript-level experimental superiority unless claim_support_matrix.json marks the claim supported_by_experiment."
+            ),
         }
         baseline_results = {
             "project_id": project.project_id,
@@ -499,6 +522,7 @@ class ExperimentService:
             primary_metric=primary_metric,
             ablation_results=ablation_results,
             robustness_results=robustness_results,
+            synthetic_mode=synthetic_mode,
         )
         error_analysis = self._render_error_analysis(
             project=project,
@@ -515,6 +539,32 @@ class ExperimentService:
             "robustness_results.json": robustness_results,
             "claim_support_matrix.json": claim_support_matrix,
         }
+        if synthetic_mode:
+            simulation_assumptions = self._simulation_assumptions(project, analysis_type)
+            simulated_contract = {
+                **experiment_contract,
+                "contract_type": "simulated_experiment",
+                "simulation_assumptions_path": "simulation_assumptions.json",
+                "disclosure_required": True,
+            }
+            synthetic_results = {
+                "project_id": project.project_id,
+                "run_id": run.run_id,
+                "analysis_type": analysis_type,
+                "metrics": metrics,
+                "primary_metric": primary_metric,
+                "baseline": baseline_results,
+                "ablation": ablation_results,
+                "robustness": robustness_results,
+                "simulation_assumptions": "simulation_assumptions.json",
+            }
+            files.update(
+                {
+                    "simulated_experiment_contract.json": simulated_contract,
+                    "simulation_assumptions.json": simulation_assumptions,
+                    "synthetic_results.json": synthetic_results,
+                }
+            )
         paths: list[Path] = []
         for filename, payload in files.items():
             path = export_dir / filename
@@ -561,15 +611,21 @@ class ExperimentService:
         primary_metric: dict[str, Any] | None,
         ablation_results: dict[str, Any],
         robustness_results: dict[str, Any],
+        synthetic_mode: bool = False,
     ) -> dict[str, Any]:
         claims: list[dict[str, Any]] = []
+        supported_status = "supported_by_simulation" if synthetic_mode else "supported_by_experiment"
+        supported_evidence_type = "simulation" if synthetic_mode else "experiment"
+        simulation_evidence = ["simulation_assumptions.json", "synthetic_results.json"] if synthetic_mode else []
         if primary_metric is not None:
             claims.append(
                 {
                     "claim": f"The executed experiment produced {primary_metric['name']}={primary_metric['value']}.",
-                    "support_status": "supported_by_experiment",
-                    "evidence": ["metrics.json", "baseline_results.json"],
+                    "support_status": supported_status,
+                    "evidence_type": supported_evidence_type,
+                    "evidence": ["metrics.json", "baseline_results.json", *simulation_evidence],
                     "artifact_path": "metrics.json",
+                    **({"simulation_assumptions_path": "simulation_assumptions.json"} if synthetic_mode else {}),
                 }
             )
         else:
@@ -591,21 +647,30 @@ class ExperimentService:
         claims.append(
             {
                 "claim": "Ablation results support the contribution.",
-                "support_status": "supported_by_experiment" if ablation_results.get("status") == "recorded" else "unsupported",
-                "evidence": ["ablation_results.json"] if ablation_results.get("status") == "recorded" else [],
+                "support_status": supported_status if ablation_results.get("status") == "recorded" else "unsupported",
+                "evidence_type": supported_evidence_type if ablation_results.get("status") == "recorded" else None,
+                "evidence": ["ablation_results.json", *simulation_evidence] if ablation_results.get("status") == "recorded" else [],
+                **({"simulation_assumptions_path": "simulation_assumptions.json"} if synthetic_mode and ablation_results.get("status") == "recorded" else {}),
             }
         )
         claims.append(
             {
                 "claim": "Robustness checks support the conclusion.",
-                "support_status": "supported_by_experiment" if robustness_results.get("status") == "recorded" else "unsupported",
-                "evidence": ["robustness_results.json"] if robustness_results.get("status") == "recorded" else [],
+                "support_status": supported_status if robustness_results.get("status") == "recorded" else "unsupported",
+                "evidence_type": supported_evidence_type if robustness_results.get("status") == "recorded" else None,
+                "evidence": ["robustness_results.json", *simulation_evidence] if robustness_results.get("status") == "recorded" else [],
+                **({"simulation_assumptions_path": "simulation_assumptions.json"} if synthetic_mode and robustness_results.get("status") == "recorded" else {}),
             }
         )
         return {
             "project_id": project.project_id,
             "run_id": run.run_id,
-            "policy": "Final manuscripts must weaken, remove, or label unsupported experimental claims as limitations or planned work.",
+            "simulation_disclosure": ExperimentService._simulation_disclosure(project) if synthetic_mode else None,
+            "policy": (
+                "Simulation-backed claims may pass manuscript export only with simulation assumptions and paper-level disclosure."
+                if synthetic_mode
+                else "Final manuscripts must weaken, remove, or label unsupported experimental claims as limitations or planned work."
+            ),
             "metrics_available": sorted(metrics.keys()),
             "claims": claims,
         }
@@ -640,6 +705,96 @@ class ExperimentService:
             "",
         ]
         return "\n".join(lines)
+
+    @staticmethod
+    def _is_synthetic_mode(metadata: dict[str, Any] | None) -> bool:
+        return bool(metadata) and any(bool(metadata.get(key)) for key in _SYNTHETIC_MODE_KEYS)
+
+    @staticmethod
+    def _simulation_disclosure(project: ExperimentProject) -> str:
+        return "This run uses simulated personal experimental data generated from stated assumptions. Third-party literature, public baselines, leaderboards, and benchmark facts must remain independently verified."
+
+    def _simulation_assumptions(self, project: ExperimentProject, analysis_type: str) -> dict[str, Any]:
+        metadata = project.metadata or {}
+        assumptions = metadata.get("simulation_assumptions")
+        if not isinstance(assumptions, dict):
+            assumptions = {}
+        return {
+            "project_id": project.project_id,
+            "topic": project.topic,
+            "analysis_type": analysis_type,
+            "disclosure": self._simulation_disclosure(project),
+            "data_generation_logic": assumptions.get(
+                "data_generation_logic",
+                "Synthetic tabular records are generated from deterministic random seeds, Gaussian feature distributions, and a controllable signal model.",
+            ),
+            "random_seed": assumptions.get("random_seed", metadata.get("simulation_seed", 42)),
+            "sample_size": assumptions.get("sample_size", metadata.get("synthetic_sample_size", 96)),
+            "feature_count": assumptions.get("feature_count", metadata.get("synthetic_feature_count", 6)),
+            "effect_size": assumptions.get("effect_size", metadata.get("simulation_effect_size", 1.0)),
+            "boundaries": assumptions.get(
+                "boundaries",
+                [
+                    "Simulation-backed results are suitable for manuscript workflow completion when real experiments are unavailable.",
+                    "They do not replace validation on real datasets or official benchmarks.",
+                    "They must not be reported as public leaderboard or third-party benchmark measurements.",
+                ],
+            ),
+        }
+
+    def _prepare_synthetic_inputs_if_needed(
+        self,
+        *,
+        project: ExperimentProject,
+        export_dir: Path,
+        analysis_type: str | None,
+        target_column: str | None,
+    ) -> None:
+        metadata = project.metadata or {}
+        if not self._is_synthetic_mode(metadata):
+            return
+        if project.dataset_ids:
+            return
+
+        synthetic_dir = export_dir / "synthetic_inputs"
+        synthetic_dir.mkdir(parents=True, exist_ok=True)
+        resolved_analysis = analysis_type or metadata.get("analysis_type") or "classification"
+        synthetic_target = target_column or metadata.get("target_column") or ("label" if resolved_analysis in {"classification", "logistic_regression", "random_forest_classification"} else "outcome")
+        dataset_path = synthetic_dir / "synthetic_dataset.csv"
+        assumptions = self._simulation_assumptions(project, str(resolved_analysis))
+        dataset = self._generate_synthetic_dataframe(
+            analysis_type=str(resolved_analysis),
+            target_column=str(synthetic_target),
+            assumptions=assumptions,
+        )
+        dataset.to_csv(dataset_path, index=False)
+        project.dataset_ids.append(str(dataset_path))
+        metadata["target_column"] = str(synthetic_target)
+        metadata.setdefault("synthetic_dataset_path", str(dataset_path))
+        metadata.setdefault("simulation_assumptions", assumptions)
+
+    @staticmethod
+    def _generate_synthetic_dataframe(
+        *,
+        analysis_type: str,
+        target_column: str,
+        assumptions: dict[str, Any],
+    ) -> pd.DataFrame:
+        seed = int(assumptions.get("random_seed") or 42)
+        sample_size = max(24, int(assumptions.get("sample_size") or 96))
+        feature_count = max(3, int(assumptions.get("feature_count") or 6))
+        effect_size = float(assumptions.get("effect_size") or 1.0)
+        rng = np.random.default_rng(seed)
+        features = rng.normal(0, 1, size=(sample_size, feature_count))
+        weights = np.linspace(effect_size, 0.2, feature_count)
+        signal = features @ weights + rng.normal(0, 0.75, size=sample_size)
+        frame = pd.DataFrame(features, columns=[f"feature_{i + 1}" for i in range(feature_count)])
+        if analysis_type in {"classification", "logistic_regression", "random_forest_classification"}:
+            threshold = float(np.median(signal))
+            frame[target_column] = np.where(signal >= threshold, "treated", "control")
+        else:
+            frame[target_column] = signal
+        return frame
 
     def _run_cs_ai(
         self,
@@ -2206,10 +2361,7 @@ class ExperimentService:
                     *[f"- {key}: {value}" for key, value in metrics.items()],
                     "",
                     "## Figures",
-                    *[
-                        f"- {item['metadata'].get('title', item['intent'])}: {', '.join(Path(path).name for path in item['output_files'])}"
-                        for item in figures
-                    ],
+                    *[f"- {item['metadata'].get('title', item['intent'])}: {', '.join(Path(path).name for path in item['output_files'])}" for item in figures],
                     "",
                     "## Notes",
                     *[f"- {note}" for note in notes],

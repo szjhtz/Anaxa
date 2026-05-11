@@ -81,6 +81,57 @@ def test_experiment_service_classification_bundle(tmp_path):
     asyncio.run(db.close())
 
 
+def test_experiment_service_synthetic_mode_exports_simulation_evidence(tmp_path):
+    paths = _make_paths(tmp_path)
+    paths.ensure_thread_dirs("thread-exp-synthetic")
+    outputs = paths.sandbox_outputs_dir("thread-exp-synthetic")
+
+    service, db = _prepare_service(tmp_path)
+    with patch("medrix_flow.experiments.service.get_paths", return_value=paths):
+        result = asyncio.run(
+            service.run_experiment(
+                thread_id="thread-exp-synthetic",
+                agent_name="cs-ai-lab",
+                topic="Simulate a classification experiment for a manuscript",
+                dataset_ids=[],
+                output_dir=outputs,
+                analysis_type="classification",
+                target_column="label",
+                metadata={
+                    "synthetic_data_mode": True,
+                    "synthetic_sample_size": 48,
+                    "simulation_assumptions": {
+                        "random_seed": 7,
+                        "effect_size": 1.4,
+                    },
+                    "ablation_results": [{"variant": "without_feature_1", "f1": 0.72}],
+                    "robustness_results": [{"check": "seed_repeat", "f1_mean": 0.8}],
+                },
+            )
+        )
+
+    assert result.run.status == "success"
+    assert any(path.endswith("simulated_experiment_contract.json") for path in result.bundle.export_files)
+    assert any(path.endswith("simulation_assumptions.json") for path in result.bundle.export_files)
+    assert any(path.endswith("synthetic_results.json") for path in result.bundle.export_files)
+    assert any(path.endswith("synthetic_inputs/synthetic_dataset.csv") for path in result.bundle.export_files)
+
+    claim_path = next(
+        outputs / path.removeprefix("/mnt/user-data/outputs/")
+        for path in result.bundle.export_files
+        if path.endswith("claim_support_matrix.json")
+    )
+    claim_matrix = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert claim_matrix["simulation_disclosure"]
+    assert any(item["support_status"] == "supported_by_simulation" for item in claim_matrix["claims"])
+    assert all(
+        item.get("simulation_assumptions_path") == "simulation_assumptions.json"
+        for item in claim_matrix["claims"]
+        if item.get("support_status") == "supported_by_simulation"
+    )
+    asyncio.run(db.close())
+
+
 def test_experiment_service_preserves_empirical_method_contract(tmp_path):
     paths = _make_paths(tmp_path)
     paths.ensure_thread_dirs("thread-exp-empirical")

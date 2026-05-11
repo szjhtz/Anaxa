@@ -54,6 +54,7 @@ import {
   type WorkflowNode,
   type WorkflowSnapshot,
 } from "@/core/api/runs";
+import type { Locale, Translations } from "@/core/i18n";
 import { useI18n } from "@/core/i18n/hooks";
 import { accumulateUsage, formatTokenCount } from "@/core/messages/usage";
 import {
@@ -74,11 +75,13 @@ type ThreadDetailsTriggerProps = {
   streaming: boolean;
 };
 
-function formatTime(value?: string | null) {
+type ThreadDetailsCopy = Translations["threadDetails"];
+
+function formatTime(value?: string | null, locale?: Locale) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString([], {
+  return date.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -96,15 +99,18 @@ function formatDuration(start?: string | null, end?: string | null) {
   return `${minutes}m ${seconds % 60}s`;
 }
 
-function formatDateTime(value?: string | null) {
+function formatDateTime(value?: string | null, locale?: Locale) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
-function formatMaybeTokens(value?: number | null) {
-  if (!value || value <= 0) return "未记录";
+function formatMaybeTokens(
+  value: number | null | undefined,
+  unrecordedLabel: string,
+) {
+  if (!value || value <= 0) return unrecordedLabel;
   return formatTokenCount(value);
 }
 
@@ -131,20 +137,20 @@ function getNodeIcon(kind: WorkflowNode["kind"]) {
   }
 }
 
-function statusLabel(status?: string) {
+function statusLabel(status: string | undefined, labels: ThreadDetailsCopy["status"]) {
   switch (status) {
     case "pending":
-      return "Pending";
+      return labels.pending;
     case "running":
-      return "Running";
+      return labels.running;
     case "success":
-      return "Complete";
+      return labels.success;
     case "error":
-      return "Error";
+      return labels.error;
     case "interrupted":
-      return "Interrupted";
+      return labels.interrupted;
     default:
-      return status ?? "Unknown";
+      return status ?? labels.unknown;
   }
 }
 
@@ -191,10 +197,14 @@ function WorkflowTreeNode({
   node,
   depth,
   onOpenArtifact,
+  copy,
+  locale,
 }: {
   node: TreeNode;
   depth: number;
   onOpenArtifact: (filepath: string) => void;
+  copy: ThreadDetailsCopy;
+  locale: Locale;
 }) {
   const Icon = getNodeIcon(node.kind);
   return (
@@ -219,21 +229,24 @@ function WorkflowTreeNode({
                 </Badge>
               </div>
               <div className="text-muted-foreground mt-1 line-clamp-2 min-w-0 break-words text-xs">
-                {node.summary || "No summary available."}
+                {node.summary || copy.noSummary}
               </div>
             </div>
             <div className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs">
-              <span>{formatTime(node.created_at)}</span>
+              <span>{formatTime(node.created_at, locale)}</span>
               <ChevronDownIcon className="size-3 transition-transform group-data-[state=open]:rotate-180" />
             </div>
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-3 space-y-2 border-t pt-3 text-xs">
             <div className="grid grid-cols-2 gap-2">
-              <DetailKV label="Status" value={statusLabel(node.status)} />
-              <DetailKV label="Caller" value={node.caller ?? "—"} />
-              <DetailKV label="Seq" value={node.seq?.toString() ?? "—"} />
               <DetailKV
-                label="Event"
+                label={copy.labels.status}
+                value={statusLabel(node.status, copy.status)}
+              />
+              <DetailKV label={copy.labels.caller} value={node.caller ?? "—"} />
+              <DetailKV label={copy.labels.seq} value={node.seq?.toString() ?? "—"} />
+              <DetailKV
+                label={copy.labels.event}
                 value={
                   typeof node.metadata?.event_type === "string"
                     ? node.metadata.event_type
@@ -267,6 +280,8 @@ function WorkflowTreeNode({
               node={child}
               depth={depth + 1}
               onOpenArtifact={onOpenArtifact}
+              copy={copy}
+              locale={locale}
             />
           ))}
         </div>
@@ -278,16 +293,20 @@ function WorkflowTreeNode({
 function WorkflowTree({
   workflow,
   onOpenArtifact,
+  copy,
+  locale,
 }: {
   workflow?: WorkflowSnapshot;
   onOpenArtifact: (filepath: string) => void;
+  copy: ThreadDetailsCopy;
+  locale: Locale;
 }) {
   if (!workflow) {
     return (
       <EmptyDetailsState
         icon={<ListTreeIcon />}
-        title="No workflow events yet"
-        description="The run is registered, but no visible agent event has been recorded yet."
+        title={copy.noWorkflowEventsTitle}
+        description={copy.noWorkflowEventsDescription}
       />
     );
   }
@@ -302,13 +321,13 @@ function WorkflowTree({
             <BotIcon className="size-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium">任务 / Run</div>
+            <div className="text-sm font-medium">{copy.taskRun}</div>
             <div className="text-muted-foreground mt-1 break-all font-mono text-xs">
               {workflow.run.run_id}
             </div>
           </div>
           <Badge variant="outline" className="shrink-0 text-[10px]">
-            {statusLabel(workflow.run.status)}
+            {statusLabel(workflow.run.status, copy.status)}
           </Badge>
         </div>
       </div>
@@ -318,13 +337,15 @@ function WorkflowTree({
           node={node}
           depth={0}
           onOpenArtifact={onOpenArtifact}
+          copy={copy}
+          locale={locale}
         />
       ))}
       {tree.length === 0 && (
         <EmptyDetailsState
           icon={<ListTreeIcon />}
-          title="暂无可视化决策流程"
-          description="当前运行还没有记录到可还原的 agent 规划、决策或工具步骤；产出文件请在“产出”页查看。"
+          title={copy.noWorkflowTitle}
+          description={copy.noWorkflowDescription}
         />
       )}
     </div>
@@ -377,25 +398,47 @@ function StatsSection({
   eventCount: number;
   onCancelRun: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const copy = t.threadDetails;
   const run = workflow?.run;
   const lastEventAt = run?.last_event_at ?? run?.updated_at;
   const usage = workflow?.usage;
   return (
     <div className="space-y-4">
       <section className="space-y-2">
-        <div className="text-sm font-medium">当前 Run</div>
+        <div className="text-sm font-medium">{copy.currentRun}</div>
         <div className="grid grid-cols-2 gap-2">
-          <DetailKV label="Status" value={streaming ? "Streaming" : statusLabel(run?.status)} />
-          <DetailKV label="Run" value={run?.run_id ?? "—"} />
-          <DetailKV label="Started" value={formatDateTime(run?.created_at)} />
-          <DetailKV label="Last Event" value={formatDateTime(lastEventAt)} />
-          <DetailKV label="Duration" value={formatDuration(run?.created_at, lastEventAt)} />
-          <DetailKV label="Events" value={String(eventCount)} />
-          <DetailKV label="Artifacts" value={String(artifactCount)} />
-          <DetailKV label={t.tokenUsage.total} value={formatMaybeTokens(usage?.total_tokens)} />
-          <DetailKV label={t.tokenUsage.input} value={formatMaybeTokens(usage?.input_tokens)} />
-          <DetailKV label={t.tokenUsage.output} value={formatMaybeTokens(usage?.output_tokens)} />
+          <DetailKV
+            label={copy.labels.status}
+            value={streaming ? copy.streaming : statusLabel(run?.status, copy.status)}
+          />
+          <DetailKV label={copy.labels.run} value={run?.run_id ?? "—"} />
+          <DetailKV
+            label={copy.labels.started}
+            value={formatDateTime(run?.created_at, locale)}
+          />
+          <DetailKV
+            label={copy.labels.lastEvent}
+            value={formatDateTime(lastEventAt, locale)}
+          />
+          <DetailKV
+            label={copy.labels.duration}
+            value={formatDuration(run?.created_at, lastEventAt)}
+          />
+          <DetailKV label={copy.labels.events} value={String(eventCount)} />
+          <DetailKV label={copy.labels.artifacts} value={String(artifactCount)} />
+          <DetailKV
+            label={t.tokenUsage.total}
+            value={formatMaybeTokens(usage?.total_tokens, copy.unrecorded)}
+          />
+          <DetailKV
+            label={t.tokenUsage.input}
+            value={formatMaybeTokens(usage?.input_tokens, copy.unrecorded)}
+          />
+          <DetailKV
+            label={t.tokenUsage.output}
+            value={formatMaybeTokens(usage?.output_tokens, copy.unrecorded)}
+          />
         </div>
         {(active || streaming) && (
           <Button
@@ -404,17 +447,26 @@ function StatsSection({
             onClick={onCancelRun}
           >
             <SquareXIcon className="size-4" />
-            停止当前任务
+            {copy.stopCurrentTask}
           </Button>
         )}
       </section>
       <section className="space-y-2">
-        <div className="text-sm font-medium">整个对话</div>
+        <div className="text-sm font-medium">{copy.wholeThread}</div>
         <div className="grid grid-cols-2 gap-2">
-          <DetailKV label={t.tokenUsage.total} value={formatMaybeTokens(threadUsage?.totalTokens)} />
-          <DetailKV label={t.tokenUsage.input} value={formatMaybeTokens(threadUsage?.inputTokens)} />
-          <DetailKV label={t.tokenUsage.output} value={formatMaybeTokens(threadUsage?.outputTokens)} />
-          <DetailKV label="Total Duration" value={threadDuration} />
+          <DetailKV
+            label={t.tokenUsage.total}
+            value={formatMaybeTokens(threadUsage?.totalTokens, copy.unrecorded)}
+          />
+          <DetailKV
+            label={t.tokenUsage.input}
+            value={formatMaybeTokens(threadUsage?.inputTokens, copy.unrecorded)}
+          />
+          <DetailKV
+            label={t.tokenUsage.output}
+            value={formatMaybeTokens(threadUsage?.outputTokens, copy.unrecorded)}
+          />
+          <DetailKV label={copy.labels.totalDuration} value={threadDuration} />
         </div>
       </section>
     </div>
@@ -432,9 +484,9 @@ function ExportMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" aria-label="导出">
+        <Button variant="outline" size="sm" aria-label={t.common.export}>
           <DownloadIcon className="size-4" />
-          导出
+          {t.common.export}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -451,7 +503,7 @@ function ExportMenu({
           onSelect={() => exportWorkflow(workflow)}
         >
           <DownloadIcon className="size-4" />
-          导出运行轨迹 JSON
+          {t.threadDetails.exportWorkflowJSON}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -467,18 +519,26 @@ function RunSummary({
   active: boolean;
   streaming: boolean;
 }) {
+  const { t, locale } = useI18n();
+  const copy = t.threadDetails;
   const run = workflow?.run;
   const lastEventAt = run?.last_event_at ?? run?.updated_at;
   return (
     <div className="grid grid-cols-2 gap-2">
-      <DetailKV label="Status" value={streaming ? "Streaming" : statusLabel(run?.status)} />
-      <DetailKV label="Run" value={run?.run_id ?? "—"} />
-      <DetailKV label="Last Event" value={formatTime(lastEventAt)} />
-      <DetailKV label="Duration" value={formatDuration(run?.created_at, lastEventAt)} />
+      <DetailKV
+        label={copy.labels.status}
+        value={streaming ? copy.streaming : statusLabel(run?.status, copy.status)}
+      />
+      <DetailKV label={copy.labels.run} value={run?.run_id ?? "—"} />
+      <DetailKV label={copy.labels.lastEvent} value={formatTime(lastEventAt, locale)} />
+      <DetailKV
+        label={copy.labels.duration}
+        value={formatDuration(run?.created_at, lastEventAt)}
+      />
       {active && !streaming && (
         <div className="bg-primary/5 text-primary col-span-2 flex items-center gap-2 rounded-md border border-primary/20 p-2 text-xs">
           <StreamingIndicator size="sm" />
-          Backend run is still active. The details panel is polling for new events.
+          {copy.activeRunPolling}
         </div>
       )}
       {run?.error && (
@@ -504,7 +564,8 @@ export function ThreadDetailsTrigger({
   currentRunId,
   streaming,
 }: ThreadDetailsTriggerProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const copy = t.threadDetails;
   const { thread } = useThread();
   const { artifacts, latestArtifact, setOpen: setArtifactsOpen, select } = useArtifacts();
   const [open, setOpen] = useState(false);
@@ -574,15 +635,15 @@ export function ThreadDetailsTrigger({
     try {
       await cancelThreadRun(threadId, runId);
       await refetch();
-      toast.success("已请求停止当前任务");
+      toast.success(copy.stopRequested);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "停止任务失败");
+      toast.error(error instanceof Error ? error.message : copy.stopFailed);
     }
-  }, [currentRunId, refetch, run?.run_id, threadId]);
+  }, [copy.stopFailed, copy.stopRequested, currentRunId, refetch, run?.run_id, threadId]);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <Tooltip content="查看工作流、产出文件、统计和运行日志">
+      <Tooltip content={copy.tooltip}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
@@ -595,7 +656,7 @@ export function ThreadDetailsTrigger({
               </span>
             )}
             <ActivityIcon />
-            详情
+            {copy.trigger}
             {artifactCount > 0 && (
               <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-[10px]">
                 {artifactCount}
@@ -608,9 +669,9 @@ export function ThreadDetailsTrigger({
         <SheetHeader className="border-b pr-12">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <SheetTitle>详情</SheetTitle>
+              <SheetTitle>{copy.title}</SheetTitle>
               <SheetDescription>
-                Agent 工作流、工具调用、产出文件与运行日志
+                {copy.description}
               </SheetDescription>
             </div>
             <Button size="icon-sm" variant="ghost" onClick={() => void refetch()}>
@@ -622,16 +683,16 @@ export function ThreadDetailsTrigger({
           <div className="border-b px-4 py-2">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="flow" onClick={() => setTab("flow")}>
-                流程
+                {copy.flow}
               </TabsTrigger>
               <TabsTrigger value="files" onClick={() => setTab("files")}>
-                产出
+                {copy.files}
               </TabsTrigger>
               <TabsTrigger value="stats" onClick={() => setTab("stats")}>
-                统计
+                {copy.stats}
               </TabsTrigger>
               <TabsTrigger value="logs" onClick={() => setTab("logs")}>
-                日志
+                {copy.logs}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -640,7 +701,12 @@ export function ThreadDetailsTrigger({
             <div className="p-4">
               <TabsContent value="flow" className="mt-0 space-y-4">
                 <RunSummary workflow={workflow} active={active} streaming={streaming} />
-                <WorkflowTree workflow={workflow} onOpenArtifact={openArtifact} />
+                <WorkflowTree
+                  workflow={workflow}
+                  onOpenArtifact={openArtifact}
+                  copy={copy}
+                  locale={locale}
+                />
               </TabsContent>
 
               <TabsContent value="files" className="mt-0">
@@ -654,8 +720,8 @@ export function ThreadDetailsTrigger({
                 ) : (
                   <EmptyDetailsState
                     icon={<FilesIcon />}
-                    title="暂无产出文件"
-                    description="当 agent 生成 PDF、表格、图片或代码文件后，会显示在这里。"
+                    title={copy.noFilesTitle}
+                    description={copy.noFilesDescription}
                   />
                 )}
               </TabsContent>
@@ -695,7 +761,7 @@ export function ThreadDetailsTrigger({
                           </div>
                           <div className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs">
                             <ClockIcon className="size-3" />
-                            {formatTime(event.created_at)}
+                            {formatTime(event.created_at, locale)}
                           </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="mt-3 overflow-hidden rounded-md bg-muted/50 p-2">
@@ -709,8 +775,8 @@ export function ThreadDetailsTrigger({
                 ) : (
                   <EmptyDetailsState
                     icon={<CodeIcon />}
-                    title="暂无运行日志"
-                    description="运行开始后，工具调用、子任务、文件产出和状态事件会逐步记录。"
+                    title={copy.noLogsTitle}
+                    description={copy.noLogsDescription}
                   />
                 )}
               </TabsContent>

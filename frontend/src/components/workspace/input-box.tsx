@@ -6,7 +6,6 @@ import {
   GraduationCapIcon,
   LightbulbIcon,
   PaperclipIcon,
-  PlusIcon,
   RocketIcon,
   XIcon,
   ZapIcon,
@@ -51,8 +50,8 @@ import {
 import {
   DropdownMenuGroup,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
@@ -70,12 +69,6 @@ import {
   ModelSelectorTrigger,
 } from "../ai-elements/model-selector";
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
@@ -220,6 +213,16 @@ export function InputBox({
       });
     },
     [onContextChange, context, supportThinking],
+  );
+
+  const handleSyntheticModeChange = useCallback(
+    (checked: boolean) => {
+      onContextChange?.({
+        ...context,
+        synthetic_data_mode: checked,
+      });
+    },
+    [context, onContextChange],
   );
 
   const handleSubmit = useCallback(
@@ -626,8 +629,11 @@ export function InputBox({
         </PromptInputTools>
       </PromptInputFooter>
       {isNewThread && searchParams.get("mode") !== "skill" && (
-        <div className="absolute right-0 -bottom-20 left-0 z-0 flex items-center justify-center">
-          <SuggestionList />
+        <div className="absolute right-0 -bottom-24 left-0 z-0 flex items-center justify-center px-3">
+          <SyntheticExperimentModeToggle
+            checked={Boolean(context.synthetic_data_mode)}
+            onCheckedChange={handleSyntheticModeChange}
+          />
         </div>
       )}
       {!isNewThread && (
@@ -695,64 +701,31 @@ export function InputBox({
   );
 }
 
-function SuggestionList() {
+function SyntheticExperimentModeToggle({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
   const { t } = useI18n();
-  const { textInput } = usePromptInputController();
-  const handleSuggestionClick = useCallback(
-    (prompt: string | undefined) => {
-      if (!prompt) return;
-      textInput.setInput(prompt);
-      setTimeout(() => {
-        const textarea = document.querySelector<HTMLTextAreaElement>(
-          "textarea[name='message']",
-        );
-        if (textarea) {
-          const selStart = prompt.indexOf("[");
-          const selEnd = prompt.indexOf("]");
-          if (selStart !== -1 && selEnd !== -1) {
-            textarea.setSelectionRange(selStart, selEnd + 1);
-            textarea.focus();
-          }
-        }
-      }, 500);
-    },
-    [textInput],
-  );
   return (
-    <Suggestions className="min-h-16 w-fit items-start">
-      {t.inputBox.suggestions.map((suggestion) => (
-        <Suggestion
-          key={suggestion.suggestion}
-          icon={suggestion.icon}
-          suggestion={suggestion.suggestion}
-          onClick={() => handleSuggestionClick(suggestion.prompt)}
-        />
-      ))}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Suggestion icon={PlusIcon} suggestion={t.common.create} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuGroup>
-            {t.inputBox.suggestionsCreate.map((suggestion, index) =>
-              "type" in suggestion && suggestion.type === "separator" ? (
-                <DropdownMenuSeparator key={index} />
-              ) : (
-                !("type" in suggestion) && (
-                  <DropdownMenuItem
-                    key={suggestion.suggestion}
-                    onClick={() => handleSuggestionClick(suggestion.prompt)}
-                  >
-                    {suggestion.icon && <suggestion.icon className="size-4" />}
-                    {suggestion.suggestion}
-                  </DropdownMenuItem>
-                )
-              ),
-            )}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </Suggestions>
+    <label className="bg-background/90 flex min-h-12 w-full max-w-[620px] cursor-pointer items-center justify-between gap-3 rounded-full border border-[#c8e6e9] px-4 py-2 text-left shadow-sm backdrop-blur-sm transition-colors hover:border-[#0891b2]/40 sm:w-fit sm:min-w-[480px]">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">
+          {t.inputBox.syntheticExperimentMode}
+        </span>
+        <span className="text-muted-foreground block text-xs leading-snug">
+          {t.inputBox.syntheticExperimentModeDescription}
+        </span>
+      </span>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-label={t.inputBox.syntheticExperimentMode}
+        className="shrink-0"
+      />
+    </label>
   );
 }
 

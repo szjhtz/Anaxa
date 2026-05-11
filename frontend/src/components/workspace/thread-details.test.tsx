@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Locale } from "@/core/i18n";
 import { I18nProvider } from "@/core/i18n/context";
 
 import { SidebarProvider } from "../ui/sidebar";
@@ -47,34 +48,77 @@ const fakeThread = {
   stop: vi.fn(),
 };
 
-function wrapper({ children }: PropsWithChildren) {
-  const client = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
+function makeWrapper(locale: Locale) {
+  return function TestWrapper({ children }: PropsWithChildren) {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
       },
+    });
+    return (
+      <QueryClientProvider client={client}>
+        <I18nProvider initialLocale={locale}>
+          <SidebarProvider>
+            <ThreadContext.Provider
+              value={{
+                thread: fakeThread as never,
+                sendMessage: vi.fn(),
+              }}
+            >
+              <ArtifactsProvider>{children}</ArtifactsProvider>
+            </ThreadContext.Provider>
+          </SidebarProvider>
+        </I18nProvider>
+      </QueryClientProvider>
+    );
+  };
+}
+
+const wrapper = makeWrapper("zh-CN");
+
+function setTestLocale(locale: Locale) {
+  document.cookie = `locale=${locale}; path=/; max-age=31536000`;
+}
+
+function mockEmptyWorkflow() {
+  mocks.cancelThreadRun.mockResolvedValue(undefined);
+  mocks.listThreadRuns.mockResolvedValue([
+    {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      assistant_id: "lead_agent",
+      status: "success",
+      metadata: {},
+      kwargs: {},
+      multitask_strategy: "reject",
+      created_at: "2026-05-09T00:00:00Z",
+      updated_at: "2026-05-09T00:00:10Z",
     },
+  ]);
+  mocks.getRunWorkflow.mockResolvedValue({
+    run: {
+      run_id: "run-1",
+      thread_id: "thread-1",
+      assistant_id: "lead_agent",
+      status: "success",
+      created_at: "2026-05-09T00:00:00Z",
+      updated_at: "2026-05-09T00:00:10Z",
+      last_event_at: null,
+    },
+    nodes: [],
+    edges: [],
+    events: [],
+    artifacts: [],
+    usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+    has_more: false,
   });
-  return (
-    <QueryClientProvider client={client}>
-      <I18nProvider initialLocale="zh-CN">
-        <SidebarProvider>
-          <ThreadContext.Provider
-            value={{
-              thread: fakeThread as never,
-              sendMessage: vi.fn(),
-            }}
-          >
-            <ArtifactsProvider>{children}</ArtifactsProvider>
-          </ThreadContext.Provider>
-        </SidebarProvider>
-      </I18nProvider>
-    </QueryClientProvider>
-  );
 }
 
 describe("ThreadDetailsTrigger", () => {
   beforeEach(() => {
+    setTestLocale("zh-CN");
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -94,6 +138,7 @@ describe("ThreadDetailsTrigger", () => {
     mocks.cancelThreadRun.mockReset();
     mocks.listThreadRuns.mockReset();
     mocks.getRunWorkflow.mockReset();
+    document.cookie = "locale=; max-age=0; path=/";
   });
 
   it("opens a details panel with workflow tree, artifacts, stats, and logs export menu", async () => {
@@ -274,6 +319,28 @@ describe("ThreadDetailsTrigger", () => {
     fireEvent.pointerDown(filesTab);
     fireEvent.click(filesTab);
     expect(await screen.findByText("scanned-only.txt")).toBeInTheDocument();
+  });
+
+  it("renders the details panel fully in English when English locale is active", async () => {
+    setTestLocale("en-US");
+    mockEmptyWorkflow();
+
+    render(
+      <ThreadDetailsTrigger threadId="thread-1" currentRunId="run-1" streaming={false} />,
+      { wrapper: makeWrapper("en-US") },
+    );
+
+    fireEvent.click(screen.getByTestId("thread-details-trigger"));
+
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByText("Agent workflow, tool calls, output files, and run logs")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Flow" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Stats" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Logs" })).toBeInTheDocument();
+    expect(await screen.findByText("Task / Run")).toBeInTheDocument();
+    expect(screen.getByText("No visual decision flow yet")).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/[详情流程产出统计日志暂无未记录当前整个导出]/);
   });
 
   it("does not show an active badge for stale pending runs", async () => {

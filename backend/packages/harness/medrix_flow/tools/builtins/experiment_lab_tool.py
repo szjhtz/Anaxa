@@ -28,6 +28,7 @@ async def experiment_lab_tool(
     group_column: str | None = None,
     linked_academic_project_id: str | None = None,
     publication_grade: str = "paper",
+    synthetic_data_mode: bool = False,
     metadata: dict[str, Any] | None = None,
 ) -> Command:
     """Run the experiment laboratory pipeline and export reproducible result bundles.
@@ -53,6 +54,7 @@ async def experiment_lab_tool(
         group_column: Optional group/condition column in metadata.
         linked_academic_project_id: Optional academic project to export paper-ready result files for.
         publication_grade: Figure quality target. Defaults to `paper`.
+        synthetic_data_mode: Allow assumption-driven simulated personal experiment data when real execution inputs are unavailable.
         metadata: Optional extra project metadata to retain in the experiment store.
     """
     thread_id = runtime.context.get("thread_id")
@@ -63,6 +65,11 @@ async def experiment_lab_tool(
     if not outputs_path:
         return Command(update={"messages": [ToolMessage("Error: thread outputs path is not available.", tool_call_id=tool_call_id)]})
     agent_name = runtime.context.get("agent_name") or (domain or "cs-ai-lab")
+    project_metadata = dict(metadata or {})
+    context_synthetic_mode = bool(runtime.context.get("synthetic_data_mode"))
+    if synthetic_data_mode or context_synthetic_mode:
+        project_metadata["synthetic_data_mode"] = True
+        project_metadata.setdefault("simulation_trigger", "synthetic_data_mode")
 
     db = SQLiteRuntimeDB(get_paths().experiment_db_file)
     await db.connect()
@@ -78,7 +85,7 @@ async def experiment_lab_tool(
             output_dir=Path(outputs_path),
             domain=domain,
             linked_academic_project_id=linked_academic_project_id,
-            metadata=metadata,
+            metadata=project_metadata,
             analysis_type=analysis_type,
             target_column=target_column,
             metadata_path=metadata_path,

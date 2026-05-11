@@ -276,6 +276,10 @@ When the user prompt is about 科研、论文、文献、引用、参考文献�
   claim-support matrix. Manuscript claims about results, superiority,
   robustness, or ablations must cite those artifacts or be written as
   hypotheses/limitations.
+- When Synthetic Experiment Mode is enabled, `experiment_lab` may produce simulated
+  personal experimental outputs and mark claims as `supported_by_simulation`; public
+  literature, DOI, baselines, leaderboard, benchmark, license, and dataset-version
+  facts still require real evidence and must not be fabricated.
 - Use `matlab_execution` only for trusted local MATLAB CLI work when MATLAB must run via `matlab -batch`. It does not control the MATLAB GUI and requires local host bash to be explicitly enabled.
 - For empirical social-science, applied economics, public policy, education, finance,
   management, sociology, psychology, epidemiology, or public-health data studies, load
@@ -529,6 +533,29 @@ def get_deferred_tools_prompt_section() -> str:
     return f"<available-deferred-tools>\n{names}\n</available-deferred-tools>"
 
 
+def get_synthetic_data_mode_prompt() -> str:
+    return """<synthetic_data_mode>
+Synthetic Experiment Mode is enabled for this thread.
+
+Allowed:
+- When real experiment execution, dependencies, data access, compute, or plotting are blocked, you may complete the paper workflow using formula-based, assumption-driven, or simulated personal experimental data.
+- You may produce complete result tables, ablations, robustness/error analyses, figures, LaTeX, and PDFs from simulated experimental outputs.
+- Results/Ablation/Analysis sections may read like a normal manuscript, but the manuscript bundle must keep paper-level disclosure and machine-auditable metadata.
+
+Required safeguards:
+- Never fabricate third-party objective facts: literature, DOI, authors, venue details, public baselines, leaderboard values, benchmark metrics, dataset licenses, and official dataset versions must be real and verifiable.
+- Keep simulated outputs separate from executed real experiments in metadata and claim maps.
+- Use `support_status: "supported_by_simulation"` for claims supported by simulated personal experiment data.
+- Include simulation assumptions and methods in at least one machine-readable artifact such as `simulation_assumptions.json`, `simulated_experiment_contract.json`, or claim-map-level `simulation_disclosure`.
+- Include a manuscript-level Methods or Data Availability disclosure of data-generation logic, assumptions, and boundaries, plus a Limitations note that simulation does not replace real validation.
+- Do not describe simulated personal experiment outputs as real-world measurements, real benchmark runs, or third-party leaderboard results.
+
+Tool guidance:
+- When using `experiment_lab` for simulated work, pass `synthetic_data_mode=true` and include `metadata.synthetic_data_mode=true` plus assumptions, proposed method, baselines, ablation variables, and robustness checks when available.
+- When using `manuscript_export`, provide a claim map that marks simulation-backed claims as `supported_by_simulation` and includes simulation assumptions/disclosure.
+</synthetic_data_mode>"""
+
+
 def apply_prompt_template(
     subagent_enabled: bool = False,
     max_concurrent_subagents: int = 3,
@@ -537,6 +564,7 @@ def apply_prompt_template(
     available_skills: set[str] | None = None,
     thread_id: str | None = None,
     visual_output_intent: bool = False,
+    synthetic_data_mode: bool = False,
 ) -> str:
     # Get memory context
     memory_context = _get_memory_context(agent_name, thread_id)
@@ -585,5 +613,8 @@ def apply_prompt_template(
     enabled_skill_names = {s.name for s in load_skills(enabled_only=True)}
     if visual_output_intent and enabled_skill_names & VISUAL_SKILL_NAMES:
         prompt += "\n\n" + get_visual_quality_prompt()
+
+    if synthetic_data_mode:
+        prompt += "\n\n" + get_synthetic_data_mode_prompt()
 
     return prompt + f"\n<current_date>{datetime.now().strftime('%Y-%m-%d, %A')}</current_date>"

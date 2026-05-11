@@ -240,6 +240,39 @@ def test_make_lead_agent_passes_visual_intent_to_tools_and_prompt(monkeypatch):
     assert captured_prompt["visual_output_intent"] is True
 
 
+def test_make_lead_agent_passes_synthetic_data_mode_to_prompt(monkeypatch):
+    app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+
+    import medrix_flow.tools as tools_module
+
+    captured_prompt: dict[str, object] = {}
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None: [])
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: object())
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "apply_prompt_template",
+        lambda **kwargs: captured_prompt.update(kwargs) or "prompt",
+    )
+
+    lead_agent_module.make_lead_agent(
+        {
+            "configurable": {
+                "model_name": "safe-model",
+                "thinking_enabled": False,
+                "is_plan_mode": False,
+                "subagent_enabled": False,
+                "synthetic_data_mode": True,
+            }
+        }
+    )
+
+    assert captured_prompt["synthetic_data_mode"] is True
+
+
 def test_bootstrap_agent_suppresses_visual_intent(monkeypatch):
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
@@ -277,3 +310,4 @@ def test_bootstrap_agent_suppresses_visual_intent(monkeypatch):
     assert captured_tools["visual_output_intent"] is False
     assert captured_prompt["available_skills"] == {"bootstrap"}
     assert captured_prompt["visual_output_intent"] is False
+    assert captured_prompt["synthetic_data_mode"] is False

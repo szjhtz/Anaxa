@@ -312,6 +312,7 @@ def make_lead_agent(config: RunnableConfig):
     max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
     is_bootstrap = cfg.get("is_bootstrap", False)
     visual_output_intent = bool(cfg.get("visual_output_intent", False)) and not is_bootstrap
+    synthetic_data_mode = bool(cfg.get("synthetic_data_mode", False)) and not is_bootstrap
     agent_name = cfg.get("agent_name")
     thread_id = cfg.get("thread_id")
     thread_memory_mtime = _thread_memory_mtime(thread_id)
@@ -355,6 +356,7 @@ def make_lead_agent(config: RunnableConfig):
             "reasoning_effort": reasoning_effort,
             "is_plan_mode": is_plan_mode,
             "subagent_enabled": subagent_enabled,
+            "synthetic_data_mode": synthetic_data_mode,
             "thread_memory_mtime": thread_memory_mtime,
         }
     )
@@ -375,6 +377,7 @@ def make_lead_agent(config: RunnableConfig):
                 available_skills=set(["bootstrap"]),
                 thread_id=thread_id,
                 visual_output_intent=False,
+                synthetic_data_mode=False,
             ),
             state_schema=ThreadState,
         )
@@ -395,6 +398,7 @@ def make_lead_agent(config: RunnableConfig):
             agent_name=agent_name,
             thread_id=thread_id,
             visual_output_intent=visual_output_intent,
+            synthetic_data_mode=synthetic_data_mode,
         ),
         state_schema=ThreadState,
     )

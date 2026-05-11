@@ -1,5 +1,3 @@
-import type { LucideIcon } from "lucide-react";
-
 export interface Translations {
   // Locale meta
   locale: {
@@ -92,21 +90,8 @@ export interface Translations {
     followupConfirmDescription: string;
     followupConfirmAppend: string;
     followupConfirmReplace: string;
-    suggestions: {
-      suggestion: string;
-      prompt: string;
-      icon: LucideIcon;
-    }[];
-    suggestionsCreate: (
-      | {
-          suggestion: string;
-          prompt: string;
-          icon: LucideIcon;
-        }
-      | {
-          type: "separator";
-        }
-    )[];
+    syntheticExperimentMode: string;
+    syntheticExperimentModeDescription: string;
   };
 
   // Sidebar
@@ -162,6 +147,10 @@ export interface Translations {
     visitGithub: string;
     settingsAndMore: string;
     about: string;
+    switchToEnglish: string;
+    switchToChinese: string;
+    languageEnglish: string;
+    languageChinese: string;
   };
 
   // Conversation
@@ -177,6 +166,58 @@ export interface Translations {
     error: string;
     interrupted: string;
     lastEvent: (time: string) => string;
+  };
+
+  // Thread details drawer
+  threadDetails: {
+    trigger: string;
+    tooltip: string;
+    title: string;
+    description: string;
+    flow: string;
+    files: string;
+    stats: string;
+    logs: string;
+    taskRun: string;
+    noWorkflowTitle: string;
+    noWorkflowDescription: string;
+    noWorkflowEventsTitle: string;
+    noWorkflowEventsDescription: string;
+    noSummary: string;
+    currentRun: string;
+    wholeThread: string;
+    stopCurrentTask: string;
+    stopRequested: string;
+    stopFailed: string;
+    exportWorkflowJSON: string;
+    activeRunPolling: string;
+    streaming: string;
+    noFilesTitle: string;
+    noFilesDescription: string;
+    noLogsTitle: string;
+    noLogsDescription: string;
+    unrecorded: string;
+    labels: {
+      status: string;
+      caller: string;
+      seq: string;
+      event: string;
+      run: string;
+      started: string;
+      lastEvent: string;
+      duration: string;
+      events: string;
+      artifacts: string;
+      totalDuration: string;
+    };
+    status: {
+      pending: string;
+      running: string;
+      success: string;
+      error: string;
+      interrupted: string;
+      unknown: string;
+    };
   };
 
   // Chats

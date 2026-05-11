@@ -42,13 +42,14 @@ describe("WorkspaceNavMenu", () => {
   });
 
   it("shows the language toggle above settings and switches locale", async () => {
+    document.cookie = "locale=zh-CN; path=/; max-age=31536000";
     render(<WorkspaceNavMenu />, { wrapper });
 
-    const languageButton = screen.getByRole("button", { name: /中文|English/i });
+    const languageButton = screen.getByRole("button", { name: /English|Chinese/i });
     expect(languageButton).toBeInTheDocument();
     fireEvent.click(languageButton);
 
-    expect(await screen.findByText(/中文|English/)).toBeInTheDocument();
+    expect(await screen.findByText(/English|Chinese/)).toBeInTheDocument();
   });
 
   it("opens the settings menu without about or appearance entries", async () => {

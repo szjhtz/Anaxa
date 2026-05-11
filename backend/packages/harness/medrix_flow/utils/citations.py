@@ -34,8 +34,16 @@ _EXPERIMENTAL_CLAIM_TERMS = {
     "state-of-the-art",
     "superior",
 }
-_SUPPORTED_STATUSES = {"supported", "verified", "supported_by_experiment", "supported_by_literature"}
-_EXPERIMENT_STATUSES = {"supported_by_experiment", "experiment-supported", "experiment_supported"}
+_SUPPORTED_STATUSES = {"supported", "verified", "supported_by_experiment", "supported_by_literature", "supported_by_simulation"}
+_EXPERIMENT_STATUSES = {"supported_by_experiment", "experiment-supported", "experiment_supported", "supported_by_simulation"}
+_SIMULATION_STATUSES = {"supported_by_simulation", "simulation-supported", "simulation_supported"}
+_SIMULATION_DISCLOSURE_KEYS = {
+    "simulation_assumptions",
+    "simulation_assumptions_path",
+    "simulation_disclosure",
+    "simulation_method",
+    "simulated_experiment_contract",
+}
 
 
 @dataclass(frozen=True)
@@ -123,8 +131,10 @@ def find_unsupported_claims(claims: Any) -> list[str]:
 
     if isinstance(claims, dict):
         candidates = claims.get("claims", claims.get("claim_table", claims.get("items", [])))
+        global_simulation_disclosure = _has_simulation_disclosure(claims)
     else:
         candidates = claims
+        global_simulation_disclosure = False
 
     unsupported: list[str] = []
     if not isinstance(candidates, list):
@@ -140,12 +150,32 @@ def find_unsupported_claims(claims: Any) -> list[str]:
         experimental_claim = _is_experimental_claim(claim_text, item)
         lacks_evidence = evidence in (None, "", []) and status not in _SUPPORTED_STATUSES
         literature_only_experimental_claim = experimental_claim and status not in _EXPERIMENT_STATUSES and evidence_type != "experiment"
+        simulation_claim_without_assumptions = status in _SIMULATION_STATUSES and not (global_simulation_disclosure or _has_simulation_disclosure(item))
         if status in {"unsupported", "contradicted", "missing"} or lacks_evidence:
             unsupported.append(claim_text or json.dumps(item, ensure_ascii=False, sort_keys=True))
         elif literature_only_experimental_claim:
             unsupported.append(claim_text or json.dumps(item, ensure_ascii=False, sort_keys=True))
+        elif simulation_claim_without_assumptions:
+            unsupported.append(claim_text or json.dumps(item, ensure_ascii=False, sort_keys=True))
 
     return unsupported
+
+
+def _has_simulation_disclosure(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_lower = str(key).lower()
+            if key_lower in _SIMULATION_DISCLOSURE_KEYS and item not in (None, "", [], {}):
+                return True
+            if key_lower in {"evidence", "artifact_path", "artifacts"} and _has_simulation_disclosure(item):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(_has_simulation_disclosure(item) for item in value)
+    if isinstance(value, str):
+        lowered = value.lower()
+        return any(key in lowered for key in _SIMULATION_DISCLOSURE_KEYS)
+    return False
 
 
 def _is_experimental_claim(claim_text: str, item: dict[str, Any]) -> bool:
@@ -180,11 +210,7 @@ def citation_paragraph_stats(source: str) -> tuple[int, int]:
     stripped = "\n".join(_UNESCAPED_COMMENT_RE.sub("", line) for line in source.splitlines())
     body_match = re.search(r"\\begin\{document\}(?P<body>.*)\\end\{document\}", stripped, flags=re.DOTALL)
     body = body_match.group("body") if body_match else stripped
-    paragraphs = [
-        paragraph.strip()
-        for paragraph in re.split(r"\n\s*\n", body)
-        if len(re.sub(r"\\[A-Za-z]+\*?(?:\[[^\]]*\])?(?:\{[^{}]*\})?", "", paragraph).strip()) >= 80
-    ]
+    paragraphs = [paragraph.strip() for paragraph in re.split(r"\n\s*\n", body) if len(re.sub(r"\\[A-Za-z]+\*?(?:\[[^\]]*\])?(?:\{[^{}]*\})?", "", paragraph).strip()) >= 80]
     uncited = [paragraph for paragraph in paragraphs if not _LATEX_CITE_RE.search(paragraph)]
     return len(paragraphs), len(uncited)
 

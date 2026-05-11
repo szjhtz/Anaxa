@@ -182,6 +182,66 @@ def test_manuscript_export_blocks_literature_only_experimental_claim(tmp_path):
     assert "Unsupported claims: 1" in result.update["messages"][0].content
 
 
+def test_manuscript_export_blocks_simulation_claim_without_assumptions(tmp_path):
+    outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
+    outputs_dir.mkdir(parents=True)
+    claim_map = {
+        "claims": [
+            {
+                "claim": "The simulated experiment outperforms the baseline on F1.",
+                "support_status": "supported_by_simulation",
+                "evidence": ["synthetic_results.json"],
+            }
+        ]
+    }
+
+    result = manuscript_export_tool_module.manuscript_export_tool.func(
+        runtime=_make_runtime(str(outputs_dir)),
+        tex_content=_tex(),
+        bibtex_content=_bib(),
+        claim_map_json=json.dumps(claim_map),
+        filename_stem="paper",
+        tool_call_id="tc-1",
+    )
+
+    audit = json.loads((outputs_dir / "citation_audit.json").read_text(encoding="utf-8"))
+    assert audit["unsupported_claims"] == ["The simulated experiment outperforms the baseline on F1."]
+    assert not (outputs_dir / "paper.pdf").exists()
+    assert "Unsupported claims: 1" in result.update["messages"][0].content
+
+
+def test_manuscript_export_allows_simulation_claim_with_assumptions(tmp_path, monkeypatch):
+    outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
+    outputs_dir.mkdir(parents=True)
+    _stub_latex_compile(monkeypatch)
+    claim_map = {
+        "simulation_disclosure": "Synthetic personal experiment data were generated from documented assumptions.",
+        "claims": [
+            {
+                "claim": "The simulated experiment produced F1=0.82.",
+                "support_status": "supported_by_simulation",
+                "evidence_type": "simulation",
+                "evidence": ["synthetic_results.json", "simulation_assumptions.json"],
+                "simulation_assumptions_path": "simulation_assumptions.json",
+            }
+        ],
+    }
+
+    result = manuscript_export_tool_module.manuscript_export_tool.func(
+        runtime=_make_runtime(str(outputs_dir)),
+        tex_content=_tex(),
+        bibtex_content=_bib(),
+        claim_map_json=json.dumps(claim_map),
+        filename_stem="paper",
+        tool_call_id="tc-1",
+    )
+
+    assert result.update["artifacts"][0] == "/mnt/user-data/outputs/paper.pdf"
+    audit = json.loads((outputs_dir / "citation_audit.json").read_text(encoding="utf-8"))
+    assert audit["status"] == "pass"
+    assert audit["unsupported_claims"] == []
+
+
 def test_manuscript_export_blocks_author_process_notes(tmp_path):
     outputs_dir = tmp_path / "threads" / "thread-1" / "user-data" / "outputs"
     outputs_dir.mkdir(parents=True)

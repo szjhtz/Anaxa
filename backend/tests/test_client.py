@@ -202,7 +202,7 @@ class TestStream:
         assert msg_events[0].data["content"] == "Hello!"
 
     def test_context_propagation(self, client):
-        """stream() passes agent_name to the context."""
+        """stream() passes runtime configuration to the tool context."""
         agent = _make_agent_mock([{"messages": [AIMessage(content="ok", id="ai-1")]}])
 
         client._agent_name = "test-agent-1"
@@ -210,13 +210,14 @@ class TestStream:
             patch.object(client, "_ensure_agent"),
             patch.object(client, "_agent", agent),
         ):
-            list(client.stream("hi", thread_id="t1"))
+            list(client.stream("hi", thread_id="t1", synthetic_data_mode=True))
         
         # Verify context passed to agent.stream
         agent.stream.assert_called_once()
         call_kwargs = agent.stream.call_args.kwargs
         assert call_kwargs["context"]["thread_id"] == "t1"
         assert call_kwargs["context"]["agent_name"] == "test-agent-1"
+        assert call_kwargs["context"]["synthetic_data_mode"] is True
 
     def test_tool_call_and_result(self, client):
         """stream() emits messages-tuple events for tool calls and results."""
@@ -440,13 +441,37 @@ class TestEnsureAgent:
         """_ensure_agent does not recreate if config key unchanged."""
         mock_agent = MagicMock()
         client._agent = mock_agent
-        client._agent_config_key = (None, True, None, False, False, False, "t1", None)
+        client._agent_config_key = (None, True, None, False, False, False, False, "t1", None)
 
         config = client._get_runnable_config("t1")
         client._ensure_agent(config)
 
         # Should still be the same mock — no recreation
         assert client._agent is mock_agent
+
+    def test_synthetic_data_mode_changes_agent_cache_key(self, client):
+        """Synthetic mode affects the system prompt and must force agent rebuild."""
+        agents_created = []
+
+        def fake_create_agent(**kwargs):
+            agent = MagicMock()
+            agents_created.append(agent)
+            return agent
+
+        config_a = client._get_runnable_config("t1", synthetic_data_mode=False)
+        config_b = client._get_runnable_config("t1", synthetic_data_mode=True)
+
+        with (
+            patch("medrix_flow.client.create_chat_model"),
+            patch("medrix_flow.client.create_agent", side_effect=fake_create_agent),
+            patch("medrix_flow.client._build_middlewares", return_value=[]),
+            patch("medrix_flow.client.apply_prompt_template", return_value="prompt"),
+            patch.object(client, "_get_tools", return_value=[]),
+        ):
+            client._ensure_agent(config_a)
+            client._ensure_agent(config_b)
+
+        assert len(agents_created) == 2
 
     def test_passes_reasoning_effort_to_model_factory(self, client):
         """_ensure_agent threads reasoning_effort into create_chat_model()."""

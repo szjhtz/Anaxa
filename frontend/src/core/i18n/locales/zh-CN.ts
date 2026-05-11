@@ -1,14 +1,3 @@
-import {
-  CompassIcon,
-  GraduationCapIcon,
-  ImageIcon,
-  MicroscopeIcon,
-  PenLineIcon,
-  ShapesIcon,
-  SparklesIcon,
-  VideoIcon,
-} from "lucide-react";
-
 import type { Translations } from "./types";
 
 export const zhCN: Translations = {
@@ -60,7 +49,7 @@ export const zhCN: Translations = {
     description:
       "面向可审计科研流程：整合文献检索、证据映射、实验编排、LaTeX/PDF 成稿与质量审查，帮助你把研究问题推进为可复核的学术产物。",
 
-    createYourOwnSkill: "创建你自己的 Agent SKill",
+    createYourOwnSkill: "创建你自己的 Agent Skill",
     createYourOwnSkillDescription:
       "创建你的 Agent Skill 来扩展 Anaxa 的科研工作流。通过自定义技能，Anaxa\n可以帮你检索文献、分析数据，并生成幻灯片、\n网页等可交付成果。",
   },
@@ -108,54 +97,9 @@ export const zhCN: Translations = {
     followupConfirmDescription: "当前输入框已有内容，选择发送方式。",
     followupConfirmAppend: "追加并发送",
     followupConfirmReplace: "替换并发送",
-    suggestions: [
-      {
-        suggestion: "写作",
-        prompt: "撰写一篇关于[主题]的博客文章",
-        icon: PenLineIcon,
-      },
-      {
-        suggestion: "研究",
-        prompt: "深入浅出的研究一下[主题]，并总结发现。",
-        icon: MicroscopeIcon,
-      },
-      {
-        suggestion: "收集",
-        prompt: "从[来源]收集数据并创建报告。",
-        icon: ShapesIcon,
-      },
-      {
-        suggestion: "学习",
-        prompt: "学习关于[主题]并创建教程。",
-        icon: GraduationCapIcon,
-      },
-    ],
-    suggestionsCreate: [
-      {
-        suggestion: "网页",
-        prompt: "生成一个关于[主题]的网页",
-        icon: CompassIcon,
-      },
-      {
-        suggestion: "图片",
-        prompt: "生成一个关于[主题]的图片",
-        icon: ImageIcon,
-      },
-      {
-        suggestion: "视频",
-        prompt: "生成一个关于[主题]的视频",
-        icon: VideoIcon,
-      },
-      {
-        type: "separator",
-      },
-      {
-        suggestion: "技能",
-        prompt:
-          "我们一起用 skill-creator 技能来创建一个技能吧。先问问我希望这个技能能做什么。",
-        icon: SparklesIcon,
-      },
-    ],
+    syntheticExperimentMode: "模拟实验模式",
+    syntheticExperimentModeDescription:
+      "允许模拟个人实验数据；文献、baseline、公开 benchmark 不得伪造。",
   },
 
   // Sidebar
@@ -214,6 +158,10 @@ export const zhCN: Translations = {
     visitGithub: "在 GitHub 上查看 Anaxa",
     settingsAndMore: "设置和更多",
     about: "关于 Anaxa",
+    switchToEnglish: "切换到英文",
+    switchToChinese: "切换到中文",
+    languageEnglish: "English",
+    languageChinese: "中文",
   },
 
   // Conversation
@@ -228,6 +176,62 @@ export const zhCN: Translations = {
     error: "任务已出错",
     interrupted: "任务已中断",
     lastEvent: (time: string) => `最近事件 ${time}`,
+  },
+
+  threadDetails: {
+    trigger: "详情",
+    tooltip: "查看工作流、产出文件、统计和运行日志",
+    title: "详情",
+    description: "Agent 工作流、工具调用、产出文件与运行日志",
+    flow: "流程",
+    files: "产出",
+    stats: "统计",
+    logs: "日志",
+    taskRun: "任务 / Run",
+    noWorkflowTitle: "暂无可视化决策流程",
+    noWorkflowDescription:
+      "当前运行还没有记录到可还原的 agent 规划、决策或工具步骤；产出文件请在“产出”页查看。",
+    noWorkflowEventsTitle: "暂无工作流事件",
+    noWorkflowEventsDescription:
+      "当前运行已注册，但还没有记录到可展示的 agent 事件。",
+    noSummary: "暂无摘要。",
+    currentRun: "当前 Run",
+    wholeThread: "整个对话",
+    stopCurrentTask: "停止当前任务",
+    stopRequested: "已请求停止当前任务",
+    stopFailed: "停止任务失败",
+    exportWorkflowJSON: "导出运行轨迹 JSON",
+    activeRunPolling:
+      "后台 run 仍在运行，详情面板正在轮询新的事件。",
+    streaming: "流式输出中",
+    noFilesTitle: "暂无产出文件",
+    noFilesDescription:
+      "当 agent 生成 PDF、表格、图片或代码文件后，会显示在这里。",
+    noLogsTitle: "暂无运行日志",
+    noLogsDescription:
+      "运行开始后，工具调用、子任务、文件产出和状态事件会逐步记录。",
+    unrecorded: "未记录",
+    labels: {
+      status: "状态",
+      caller: "调用方",
+      seq: "序号",
+      event: "事件",
+      run: "Run",
+      started: "开始时间",
+      lastEvent: "最近事件",
+      duration: "耗时",
+      events: "事件数",
+      artifacts: "产出数",
+      totalDuration: "总耗时",
+    },
+    status: {
+      pending: "等待中",
+      running: "运行中",
+      success: "已完成",
+      error: "错误",
+      interrupted: "已中断",
+      unknown: "未知",
+    },
   },
 
   // Chats

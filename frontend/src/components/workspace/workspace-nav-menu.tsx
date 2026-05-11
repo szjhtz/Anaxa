@@ -110,8 +110,8 @@ export function WorkspaceNavMenu() {
           <Tooltip
             content={
               locale === "zh-CN"
-                ? "Switch to English"
-                : "切换到中文"
+                ? t.workspace.switchToEnglish
+                : t.workspace.switchToChinese
             }
           >
             <SidebarMenuButton
@@ -121,7 +121,11 @@ export function WorkspaceNavMenu() {
             >
               <LanguagesIcon className="size-4" />
               {isSidebarOpen && (
-                <span>{locale === "zh-CN" ? "English" : "中文"}</span>
+                <span>
+                  {locale === "zh-CN"
+                    ? t.workspace.languageEnglish
+                    : t.workspace.languageChinese}
+                </span>
               )}
             </SidebarMenuButton>
           </Tooltip>
