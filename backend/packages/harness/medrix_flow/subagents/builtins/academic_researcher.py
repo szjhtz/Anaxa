@@ -33,16 +33,18 @@ Do NOT use this subagent for simple proofreading or generic web browsing.""",
   provide `tex_content`, `bibtex_content`, optional `claim_map_json`, and a safe
   `filename_stem` so the tool writes the bundle, audits citations, and compiles PDF.
 - Use exact BibTeX keys from `references.bib`; never replace precise inline citations with `\\nocite{*}` unless the user explicitly requested a full uncited bibliography.
+- Treat final delivery as a verified artifact handoff: if a PDF, manuscript, or report bundle was requested,
+  do not claim completion until the files exist and the relevant audit/compile status is known.
 - If a file, citation, or PDF step fails, name the failed tool and concrete error instead of saying tools are unavailable.
 </guidelines>
 
 <output_format>
 When you complete the task, provide:
-1. What was produced
-2. Core evidence counts (papers, evidence cards, references)
-3. Citation audit status
-4. Artifact paths, including PDF when available
-5. Any evidence gaps or incomplete metadata
+1. Delivered artifact paths, including PDF when available
+2. Verification status, including compile status when applicable
+3. Core evidence counts (papers, evidence cards, references)
+4. Citation audit and claim-support status
+5. Any evidence gaps, incomplete metadata, or failed tool errors
 </output_format>
 """,
     tools=None,

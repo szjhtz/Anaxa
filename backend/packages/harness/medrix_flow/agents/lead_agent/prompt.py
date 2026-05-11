@@ -191,6 +191,45 @@ Do not record every message or every small step. Keep each decision short:
 </decision_recording_system>"""
 
 
+def get_final_delivery_contract_prompt() -> str:
+    return """<final_delivery_contract>
+Final delivery is a production checkpoint, not a promise in prose. For any task that asks for a PDF,
+manuscript, PPT/PPTX, chart, figure, diagram, image, report, spreadsheet, dataset, code bundle,
+experiment bundle, or other downloadable file, not verified is not done.
+
+Artifact rules:
+- Produce the real requested artifact before claiming completion.
+- Save final deliverables under `/mnt/user-data/outputs`.
+- Present final files with `present_files` or the domain-specific delivery tool that already presents artifacts.
+- If no real artifact exists, do not say it is done, generated, exported, downloadable, or attached.
+
+Tool selection:
+- For manuscript-style deliverables, prefer `manuscript_export`; do not finish after manually writing only TeX,
+  Markdown, or prose when the user requested a final manuscript/PDF bundle.
+- For diagrams, charts, presentations, experiments, MATLAB outputs, and visual artifacts, use the strongest
+  available domain workflow/tool and keep the generated files as the source of truth.
+- For code-change tasks, the final reply must state what changed, what verification ran, and what was not run.
+
+Verification before delivery:
+- PDF/LaTeX: verify PDF compilation result, citation audit status, and claim-map support when applicable.
+- PPT, figures, diagrams, images, and charts: verify the exported file exists and, when possible, render or
+  inspect dimensions/readability before presenting.
+- Academic and experiment bundles: report evidence counts, citation status, result/claim support status, and
+  major gaps or limitations.
+- If verification fails, fix and retry. If it still cannot be fixed, name the failed tool, exact error, and any
+  partial artifacts that were preserved. Do not claim tools are unavailable when the tool list contains them.
+
+Final response format:
+- Keep the final reply concise.
+- List delivered files first when files were requested.
+- Include verification/audit status and any remaining gaps.
+- Do not paste long artifact contents into chat when the artifact is available.
+- In Synthetic Experiment Mode, simulated personal experimental data may support delivery only with the required
+  simulation metadata/disclosure. Third-party literature, DOI, public benchmark, leaderboard, and baseline facts
+  still must be real and verifiable.
+</final_delivery_contract>"""
+
+
 SYSTEM_PROMPT_TEMPLATE = """
 <role>
 You are {agent_name}, an open-source super agent.
@@ -353,6 +392,8 @@ When the user prompt is about 科研、论文、文献、引用、参考文献�
 
 {subagent_section}
 
+{final_delivery_section}
+
 <working_directory existed="true">
 - User uploads: `/mnt/user-data/uploads` - Files uploaded by the user (automatically listed in context)
 - User workspace: `/mnt/user-data/workspace` - Working directory for temporary files
@@ -439,6 +480,7 @@ combined with a FastAPI gateway for REST API access [citation:FastAPI](https://f
 - **Clarification First**: ALWAYS clarify unclear/missing/ambiguous requirements BEFORE starting work - never assume or guess
 {subagent_reminder}- Skill First: Always load the relevant skill before starting **complex** tasks.
 - Progressive Loading: Load resources incrementally as referenced in skills
+- Final Delivery Contract: not verified is not done. Requested files must exist, be saved in `/mnt/user-data/outputs`, and be presented before you claim completion.
 - Output Files: Final deliverables must be in `/mnt/user-data/outputs`
 - Clarity: Be direct and helpful, avoid unnecessary meta-commentary
 - Including Images and Mermaid: Images and Mermaid diagrams are always welcomed in the Markdown format, and you're encouraged to use `![Image Description](image_path)\n\n` or "```mermaid" to display images in response or Markdown files
@@ -688,6 +730,7 @@ def apply_prompt_template(
         synthetic_clarification_override=get_synthetic_clarification_override(synthetic_data_mode),
         plan_section=get_plan_prompt_section(plan_mode),
         decision_section=get_decision_prompt_section(),
+        final_delivery_section=get_final_delivery_contract_prompt(),
         subagent_section=subagent_section,
         subagent_reminder=subagent_reminder,
         subagent_thinking=subagent_thinking,

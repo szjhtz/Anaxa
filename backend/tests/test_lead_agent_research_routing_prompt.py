@@ -27,3 +27,21 @@ def test_apply_prompt_template_includes_research_routing_guidance(monkeypatch):
     assert "experiment_lab" in rendered
     assert "empirical-research-methods" in rendered
     assert "DID" in rendered
+
+
+def test_apply_prompt_template_includes_final_delivery_contract(monkeypatch):
+    monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, thread_id=None: "")
+    monkeypatch.setattr(prompt_module, "get_agent_soul", lambda agent_name: "")
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda available_skills=None: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda: "")
+    monkeypatch.setattr(prompt_module, "load_skills", lambda enabled_only=True: [])
+
+    rendered = prompt_module.apply_prompt_template()
+
+    assert "<final_delivery_contract>" in rendered
+    assert "not verified is not done" in rendered
+    assert "/mnt/user-data/outputs" in rendered
+    assert "present_files" in rendered
+    assert "manuscript_export" in rendered
+    assert "If no real artifact exists" in rendered
+    assert "do not say it is done" in rendered
