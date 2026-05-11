@@ -239,6 +239,7 @@ class MedrixFlowClient:
             "tools": self._get_tools(
                 model_name=model_name,
                 subagent_enabled=subagent_enabled,
+                plan_mode=bool(cfg.get("is_plan_mode", False)),
                 visual_output_intent=visual_output_intent,
             ),
             "middleware": _build_middlewares(config, model_name=model_name, agent_name=self._agent_name),
@@ -247,6 +248,7 @@ class MedrixFlowClient:
                 max_concurrent_subagents=max_concurrent_subagents,
                 agent_name=self._agent_name,
                 thread_id=thread_id,
+                plan_mode=bool(cfg.get("is_plan_mode", False)),
                 visual_output_intent=visual_output_intent,
                 synthetic_data_mode=synthetic_data_mode,
             ),
@@ -275,13 +277,20 @@ class MedrixFlowClient:
         )
 
     @staticmethod
-    def _get_tools(*, model_name: str | None, subagent_enabled: bool, visual_output_intent: bool = False):
+    def _get_tools(
+        *,
+        model_name: str | None,
+        subagent_enabled: bool,
+        plan_mode: bool = False,
+        visual_output_intent: bool = False,
+    ):
         """Lazy import to avoid circular dependency at module level."""
         from medrix_flow.tools import get_available_tools
 
         return get_available_tools(
             model_name=model_name,
             subagent_enabled=subagent_enabled,
+            plan_mode=plan_mode,
             visual_output_intent=visual_output_intent,
         )
 
@@ -307,7 +316,10 @@ class MedrixFlowClient:
                 payload["additional_kwargs"] = msg.additional_kwargs
             return payload
         if isinstance(msg, HumanMessage):
-            return {"type": "human", "content": msg.content, "id": getattr(msg, "id", None)}
+            payload = {"type": "human", "content": msg.content, "id": getattr(msg, "id", None)}
+            if getattr(msg, "name", None):
+                payload["name"] = getattr(msg, "name")
+            return payload
         if isinstance(msg, SystemMessage):
             return {"type": "system", "content": msg.content, "id": getattr(msg, "id", None)}
         return {"type": "unknown", "content": str(msg), "id": getattr(msg, "id", None)}
@@ -463,6 +475,7 @@ class MedrixFlowClient:
                 data={
                     "title": chunk.get("title"),
                     "messages": [self._serialize_message(m) for m in messages],
+                    "plan": chunk.get("plan"),
                     "artifacts": chunk.get("artifacts", []),
                 },
             )

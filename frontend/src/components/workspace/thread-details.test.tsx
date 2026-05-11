@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +16,16 @@ const mocks = vi.hoisted(() => ({
   cancelThreadRun: vi.fn(),
   listThreadRuns: vi.fn(),
   getRunWorkflow: vi.fn(),
+  updateState: vi.fn(),
+  sendMessage: vi.fn(),
+}));
+
+vi.mock("@/core/api", () => ({
+  getAPIClient: vi.fn(() => ({
+    threads: {
+      updateState: (...args: unknown[]) => mocks.updateState(...args),
+    },
+  })),
 }));
 
 vi.mock("@/core/api/runs", async (importOriginal) => {
@@ -28,27 +38,34 @@ vi.mock("@/core/api/runs", async (importOriginal) => {
   };
 });
 
-const fakeThread = {
-  messages: [
-    { type: "human", id: "h1", content: "Generate paper" },
-    {
-      type: "ai",
-      id: "a1",
-      content: "Done",
-      usage_metadata: { input_tokens: 10, output_tokens: 20, total_tokens: 30 },
+function makeFakeThread(values: Record<string, unknown> = {}) {
+  return {
+    messages: [
+      { type: "human", id: "h1", content: "Generate paper" },
+      {
+        type: "ai",
+        id: "a1",
+        content: "Done",
+        usage_metadata: { input_tokens: 10, output_tokens: 20, total_tokens: 30 },
+      },
+    ],
+    values: {
+      title: "Paper",
+      messages: [],
+      artifacts: ["/mnt/user-data/outputs/paper.pdf"],
+      ...values,
     },
-  ],
-  values: {
-    title: "Paper",
-    messages: [],
-    artifacts: ["/mnt/user-data/outputs/paper.pdf"],
-  },
-  isLoading: false,
-  error: null,
-  stop: vi.fn(),
-};
+    isLoading: false,
+    error: null,
+    stop: vi.fn(),
+  };
+}
 
-function makeWrapper(locale: Locale) {
+function makeWrapper(
+  locale: Locale,
+  thread = makeFakeThread(),
+  sendMessage = mocks.sendMessage,
+) {
   return function TestWrapper({ children }: PropsWithChildren) {
     const client = new QueryClient({
       defaultOptions: {
@@ -63,8 +80,8 @@ function makeWrapper(locale: Locale) {
           <SidebarProvider>
             <ThreadContext.Provider
               value={{
-                thread: fakeThread as never,
-                sendMessage: vi.fn(),
+                thread: thread as never,
+                sendMessage,
               }}
             >
               <ArtifactsProvider>{children}</ArtifactsProvider>
@@ -138,10 +155,12 @@ describe("ThreadDetailsTrigger", () => {
     mocks.cancelThreadRun.mockReset();
     mocks.listThreadRuns.mockReset();
     mocks.getRunWorkflow.mockReset();
+    mocks.updateState.mockReset();
+    mocks.sendMessage.mockReset();
     document.cookie = "locale=; max-age=0; path=/";
   });
 
-  it("opens a details panel with workflow tree, artifacts, stats, and logs export menu", async () => {
+  it("opens a details panel with plan, workflow tree, artifacts, stats, and logs export menu", async () => {
     mocks.cancelThreadRun.mockResolvedValue(undefined);
     mocks.listThreadRuns.mockResolvedValue([
       {
@@ -168,13 +187,33 @@ describe("ThreadDetailsTrigger", () => {
       },
       nodes: [
         {
-          id: "event-1",
+          id: "decision-1",
+          kind: "decision",
+          label: "选择论文导出路径",
+          status: "success",
+          summary: "需要生成可交付论文文件，因此使用 manuscript_export。",
+          caller: "assistant",
+          tool_name: "record_decision",
+          seq: 1,
+          created_at: "2026-05-09T00:00:04Z",
+          metadata: {
+            event_type: "ai_tool_calls",
+            decision_type: "tool_selection",
+            rationale: "需要生成可交付论文文件，因此使用 manuscript_export。",
+            next_step: "调用 manuscript_export 生成 LaTeX 与 PDF。",
+            outcome: "论文文件已生成。",
+            alternatives: ["手动写入文件后再调用 present_files"],
+            related_tool: "manuscript_export",
+          },
+        },
+        {
+          id: "event-2",
           kind: "tool",
           label: "manuscript_export",
           status: "success",
           summary: "Generated manuscript bundle.",
           caller: "manuscript_export",
-          seq: 1,
+          seq: 2,
           created_at: "2026-05-09T00:00:05Z",
           metadata: { event_type: "tool_message" },
         },
@@ -187,15 +226,20 @@ describe("ThreadDetailsTrigger", () => {
             "/mnt/user-data/outputs/really-long-directory-name-that-should-wrap-instead-of-overflowing-the-panel/paper.pdf",
           artifact_path:
             "/mnt/user-data/outputs/really-long-directory-name-that-should-wrap-instead-of-overflowing-the-panel/paper.pdf",
-          seq: 1,
+          seq: 2,
           created_at: "2026-05-09T00:00:06Z",
           metadata: {},
         },
       ],
       edges: [
         {
-          id: "edge-event-1-artifact-1",
-          source: "event-1",
+          id: "edge-decision-1-event-2",
+          source: "decision-1",
+          target: "event-2",
+        },
+        {
+          id: "edge-event-2-artifact-1",
+          source: "event-2",
           target: "artifact-1",
           label: "created",
         },
@@ -231,16 +275,27 @@ describe("ThreadDetailsTrigger", () => {
 
     fireEvent.click(screen.getByTestId("thread-details-trigger"));
 
-    expect(await screen.findByText("Agent 工作流、工具调用、产出文件与运行日志")).toBeInTheDocument();
-    expect(await screen.findByText("任务 / Run")).toBeInTheDocument();
-    expect(await screen.findByText("manuscript_export")).toBeInTheDocument();
+    expect(await screen.findByText("计划、Agent 工作流、工具调用、产出文件与运行日志")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.getByRole("tab", { name: "计划" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "导出" })).not.toBeInTheDocument();
+    expect(screen.getByText("暂无计划")).toBeInTheDocument();
+
+    const flowTab = screen.getByRole("tab", { name: "流程" });
+    fireEvent.pointerDown(flowTab);
+    fireEvent.click(flowTab);
+    expect(await screen.findByText("用户目标 / Run")).toBeInTheDocument();
+    expect(await screen.findByText("选择论文导出路径")).toBeInTheDocument();
+    expect(screen.getByText("决策")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("选择论文导出路径"));
+    expect(await screen.findByText("依据")).toBeInTheDocument();
+    expect(screen.getByText("调用 manuscript_export 生成 LaTeX 与 PDF。")).toBeInTheDocument();
+    expect(screen.getByText("论文文件已生成。")).toBeInTheDocument();
+    expect(screen.getAllByText("manuscript_export").length).toBeGreaterThan(0);
     fireEvent.click(await screen.findByText("paper.pdf"));
     expect(await screen.findByTestId("workflow-artifact-path")).toHaveTextContent(
       "/mnt/user-data/outputs/really-long-directory-name-that-should-wrap-instead-of-overflowing-the-panel/paper.pdf",
     );
-
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
-    expect(screen.queryByRole("tab", { name: "导出" })).not.toBeInTheDocument();
 
     const filesTab = screen.getByRole("tab", { name: "产出" });
     fireEvent.pointerDown(filesTab);
@@ -260,6 +315,8 @@ describe("ThreadDetailsTrigger", () => {
     const exportButton = screen.getByRole("button", { name: "导出" });
     fireEvent.keyDown(exportButton, { key: "Enter" });
     const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("导出对话 Markdown")).toBeInTheDocument();
+    expect(within(menu).getByText("导出对话 JSON")).toBeInTheDocument();
     expect(within(menu).getByText("导出运行轨迹 JSON")).toBeInTheDocument();
     expect(screen.getByText("#1")).toBeInTheDocument();
   });
@@ -311,7 +368,10 @@ describe("ThreadDetailsTrigger", () => {
 
     fireEvent.click(screen.getByTestId("thread-details-trigger"));
 
-    expect(await screen.findByText("任务 / Run")).toBeInTheDocument();
+    const flowTab = screen.getByRole("tab", { name: "流程" });
+    fireEvent.pointerDown(flowTab);
+    fireEvent.click(flowTab);
+    expect(await screen.findByText("用户目标 / Run")).toBeInTheDocument();
     expect(screen.queryByText("历史产出")).not.toBeInTheDocument();
     expect(screen.queryByText("scanned-only.txt")).not.toBeInTheDocument();
 
@@ -333,14 +393,80 @@ describe("ThreadDetailsTrigger", () => {
     fireEvent.click(screen.getByTestId("thread-details-trigger"));
 
     expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
-    expect(screen.getByText("Agent workflow, tool calls, output files, and run logs")).toBeInTheDocument();
+    expect(screen.getByText("Plan, agent workflow, tool calls, output files, and run logs")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Plan" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Flow" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Stats" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Logs" })).toBeInTheDocument();
-    expect(await screen.findByText("Task / Run")).toBeInTheDocument();
+
+    const flowTab = screen.getByRole("tab", { name: "Flow" });
+    fireEvent.pointerDown(flowTab);
+    fireEvent.click(flowTab);
+    expect(await screen.findByText("User Goal / Run")).toBeInTheDocument();
     expect(screen.getByText("No visual decision flow yet")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/[详情流程产出统计日志暂无未记录当前整个导出]/);
+  });
+
+  it("shows a structured plan and confirms it before execution", async () => {
+    mockEmptyWorkflow();
+    mocks.updateState.mockResolvedValue(undefined);
+    mocks.sendMessage.mockResolvedValue(undefined);
+    const planThread = makeFakeThread({
+      plan: {
+        summary: "先完成证据地图，再生成论文交付物",
+        phases: ["确认研究问题", "设计实验与消融", "生成成稿"],
+        deliverables: ["experiment_contract.json", "manuscript.tex"],
+        open_questions: ["是否需要中文摘要？"],
+        acceptance_criteria: ["所有结论都有证据来源"],
+        risk_points: ["公开 benchmark 可能需要登录"],
+        status: "awaiting_approval",
+        revision_count: 1,
+        updated_at: "2026-05-09T00:00:10Z",
+        revisions: [
+          {
+            revision_number: 1,
+            source: "agent",
+            note: "Initial plan",
+            status: "awaiting_approval",
+            updated_at: "2026-05-09T00:00:10Z",
+          },
+        ],
+      },
+    });
+
+    render(
+      <ThreadDetailsTrigger threadId="thread-1" currentRunId="run-1" streaming={false} />,
+      { wrapper: makeWrapper("zh-CN", planThread) },
+    );
+
+    fireEvent.click(screen.getByTestId("thread-details-trigger"));
+
+    expect(await screen.findByText("先完成证据地图，再生成论文交付物")).toBeInTheDocument();
+    expect(screen.getByText("确认研究问题")).toBeInTheDocument();
+    expect(screen.getByText("experiment_contract.json")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /确认并执行/ }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mocks.updateState).toHaveBeenCalledWith(
+        "thread-1",
+        expect.objectContaining({
+          values: {
+            plan: expect.objectContaining({
+              status: "approved",
+              revision_count: 2,
+            }),
+          },
+        }),
+      );
+    });
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      "我确认当前 Plan 页里的计划，请现在按已确认计划执行。",
+    );
   });
 
   it("does not show an active badge for stale pending runs", async () => {

@@ -24,6 +24,15 @@ _PROMPT_ECHO_RE = re.compile(
     r"generate a concise title|return only the title|user message:|assistant summary:|^the user\b|^the assistant\b",
     re.IGNORECASE,
 )
+_GENERIC_SUMMARY_TITLE_RE = re.compile(
+    r"^(?:"
+    r"here(?:'s| is)\s+(?:a\s+)?(?:brief\s+|concise\s+)?summary\s+of\s+(?:the\s+)?(?:conversation|chat)(?:\s+to\s+date)?"
+    r"|(?:the\s+)?(?:conversation|chat)\s+summary"
+    r"|summary\s+of\s+(?:this|the)\s+(?:conversation|chat)"
+    r"|(?:本次|这次|当前)?(?:对话|聊天)(?:的)?(?:总结|小结)"
+    r")\s*[:：。.!！-]*$",
+    re.IGNORECASE,
+)
 
 
 class TitleMiddlewareState(AgentState):
@@ -95,6 +104,7 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
 
         prompt = config.prompt_template.format(
             max_words=config.max_words,
+            max_chars=config.max_chars,
             user_msg=user_msg[:500],
             assistant_msg=assistant_msg[:500],
         )
@@ -112,7 +122,11 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
             candidate = line.strip().strip('"').strip("'").strip("`*_ ")
             candidate = _TITLE_INTRO_RE.sub("", candidate)
             candidate = _TITLE_LABEL_RE.sub("", candidate).strip().strip('"').strip("'")
-            if not candidate or _PROMPT_ECHO_RE.search(candidate):
+            if (
+                not candidate
+                or _PROMPT_ECHO_RE.search(candidate)
+                or _GENERIC_SUMMARY_TITLE_RE.search(candidate)
+            ):
                 continue
             title = re.sub(r"\s+", " ", candidate).strip()
             break

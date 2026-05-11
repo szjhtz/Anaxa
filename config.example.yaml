@@ -392,7 +392,7 @@ skills:
 title:
   enabled: true
   max_words: 6
-  max_chars: 60
+  max_chars: 90
   model_name: null # Use default model (first model in models list)
 
 # ============================================================================

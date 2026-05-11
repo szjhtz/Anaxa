@@ -14,7 +14,7 @@ class TestTitleConfig:
         config = TitleConfig()
         assert config.enabled is True
         assert config.max_words == 6
-        assert config.max_chars == 60
+        assert config.max_chars == 90
         assert config.model_name is None
 
     def test_custom_config(self):

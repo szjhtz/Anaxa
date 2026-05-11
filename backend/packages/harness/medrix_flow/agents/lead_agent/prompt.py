@@ -153,6 +153,44 @@ bash("npm test")  # Direct execution, not task()
 </subagent_system>"""
 
 
+def get_plan_prompt_section(plan_mode: bool) -> str:
+    if not plan_mode:
+        return ""
+    return """<plan_mode_system>
+Plan mode is enabled for this thread.
+
+Workflow:
+1. For complex tasks, create a structured plan before any final execution.
+2. Persist the plan with `write_plan` so it appears in the right-side Plan tab.
+3. Include at least: summary, phases, deliverables, open_questions, acceptance_criteria, and risk_points.
+4. If the plan status is `awaiting_approval` or `needs_revision`, do not start final execution, file production, or other irreversible work.
+5. Use clarification for missing requirements; use the plan for the execution strategy.
+6. Once the user confirms the plan, continue with the approved plan and keep Flow reserved for real execution.
+7. Keep the full plan out of the chat transcript; the Plan tab is the canonical source of truth.
+8. If the task is simple and does not need a plan, answer directly.
+</plan_mode_system>"""
+
+
+def get_decision_prompt_section() -> str:
+    return """<decision_recording_system>
+Use `record_decision` to make the Flow tab a decision tree instead of a raw event log.
+
+Record only concise, auditable decision summaries. Do not include hidden reasoning,
+private chain-of-thought, or long internal analysis.
+
+Call `record_decision` when a decision changes the execution route:
+- Choosing the overall approach for a complex task.
+- Selecting a tool, subagent, dataset, benchmark, or execution backend.
+- Retrying after a failure, switching to a fallback, or narrowing scope.
+- Updating the plan after new evidence or user feedback.
+- Running a final validation or delivery check before presenting files.
+
+Do not record every message or every small step. Keep each decision short:
+`title`, `decision_type`, `rationale`, `next_step`, `status`, optional
+`alternatives`, optional `related_tool`, and optional `outcome`.
+</decision_recording_system>"""
+
+
 SYSTEM_PROMPT_TEMPLATE = """
 <role>
 You are {agent_name}, an open-source super agent.
@@ -238,6 +276,9 @@ You (action): ask_clarification(
 User: "staging"
 You: "Deploying to staging..." [proceed]
 </clarification_system>
+
+{plan_section}
+{decision_section}
 
 <research_routing_system>
 科研相关能力在后台自动分流，不需要用户进入单独的科研页面或显式点选按钮。
@@ -563,6 +604,7 @@ def apply_prompt_template(
     agent_name: str | None = None,
     available_skills: set[str] | None = None,
     thread_id: str | None = None,
+    plan_mode: bool = False,
     visual_output_intent: bool = False,
     synthetic_data_mode: bool = False,
 ) -> str:
@@ -604,6 +646,8 @@ def apply_prompt_template(
         skills_section=skills_section,
         deferred_tools_section=deferred_tools_section,
         memory_context=memory_context,
+        plan_section=get_plan_prompt_section(plan_mode),
+        decision_section=get_decision_prompt_section(),
         subagent_section=subagent_section,
         subagent_reminder=subagent_reminder,
         subagent_thinking=subagent_thinking,

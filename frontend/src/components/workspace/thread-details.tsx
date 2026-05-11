@@ -5,6 +5,7 @@ import {
   AlertTriangleIcon,
   BoxIcon,
   BotIcon,
+  CheckCircle2Icon,
   ChevronDownIcon,
   ClockIcon,
   CodeIcon,
@@ -14,13 +15,14 @@ import {
   FilesIcon,
   GitBranchIcon,
   ListTreeIcon,
+  PencilIcon,
   RefreshCwIcon,
   SquareIcon,
   SquareXIcon,
   UserIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArtifactFileList } from "@/components/workspace/artifacts/artifact-file-list";
 import { useArtifacts } from "@/components/workspace/artifacts/context";
 import { Tooltip } from "@/components/workspace/tooltip";
+import { getAPIClient } from "@/core/api";
 import {
   cancelThreadRun,
   type WorkflowNode,
@@ -62,7 +65,7 @@ import {
   exportThreadAsJSON,
   exportThreadAsMarkdown,
 } from "@/core/threads/export";
-import type { AgentThread } from "@/core/threads/types";
+import type { AgentThread, PlanState } from "@/core/threads/types";
 import { useThreadWorkflow } from "@/core/workflow";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +79,39 @@ type ThreadDetailsTriggerProps = {
 };
 
 type ThreadDetailsCopy = Translations["threadDetails"];
+
+function planStatusLabel(
+  status: string | undefined,
+  labels: ThreadDetailsCopy["planStatus"],
+) {
+  switch (status) {
+    case "draft":
+      return labels.draft;
+    case "awaiting_approval":
+      return labels.awaiting_approval;
+    case "needs_revision":
+      return labels.needs_revision;
+    case "approved":
+      return labels.approved;
+    case "executing":
+      return labels.executing;
+    case "completed":
+      return labels.completed;
+    case "blocked":
+      return labels.blocked;
+    default:
+      return labels.unknown;
+  }
+}
+
+function planCanBeApproved(plan?: PlanState | null) {
+  return Boolean(
+    plan &&
+      (plan.status === "draft" ||
+        plan.status === "awaiting_approval" ||
+        plan.status === "needs_revision"),
+  );
+}
 
 function formatTime(value?: string | null, locale?: Locale) {
   if (!value) return "—";
@@ -118,6 +154,8 @@ function getNodeIcon(kind: WorkflowNode["kind"]) {
   switch (kind) {
     case "user":
       return UserIcon;
+    case "decision":
+      return GitBranchIcon;
     case "tool":
       return WrenchIcon;
     case "subagent":
@@ -134,6 +172,31 @@ function getNodeIcon(kind: WorkflowNode["kind"]) {
       return BotIcon;
     default:
       return ActivityIcon;
+  }
+}
+
+function nodeKindLabel(kind: WorkflowNode["kind"], copy: ThreadDetailsCopy) {
+  switch (kind) {
+    case "decision":
+      return copy.nodeKinds.decision;
+    case "user":
+      return copy.nodeKinds.user;
+    case "agent":
+      return copy.nodeKinds.agent;
+    case "subagent":
+      return copy.nodeKinds.subagent;
+    case "tool":
+      return copy.nodeKinds.tool;
+    case "artifact":
+      return copy.nodeKinds.artifact;
+    case "checkpoint":
+      return copy.nodeKinds.checkpoint;
+    case "final":
+      return copy.nodeKinds.final;
+    case "error":
+      return copy.nodeKinds.error;
+    default:
+      return copy.nodeKinds.event;
   }
 }
 
@@ -155,6 +218,17 @@ function statusLabel(status: string | undefined, labels: ThreadDetailsCopy["stat
 }
 
 type TreeNode = WorkflowNode & { children: TreeNode[] };
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" ? value : "";
+}
+
+function metadataStringList(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
 
 function buildWorkflowTree(workflow: WorkflowSnapshot): TreeNode[] {
   if (workflow.nodes.length > 0 && workflow.edges.length === 0) {
@@ -207,6 +281,11 @@ function WorkflowTreeNode({
   locale: Locale;
 }) {
   const Icon = getNodeIcon(node.kind);
+  const isDecision = node.kind === "decision";
+  const rationale = metadataString(node.metadata, "rationale");
+  const nextStep = metadataString(node.metadata, "next_step");
+  const outcome = metadataString(node.metadata, "outcome");
+  const alternatives = metadataStringList(node.metadata, "alternatives");
   return (
     <div className={cn(depth > 0 && "border-l pl-4")}>
       <div className="relative flex min-w-0 gap-3">
@@ -225,7 +304,7 @@ function WorkflowTreeNode({
               <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                 <span className="min-w-0 truncate text-sm font-medium">{node.label}</span>
                 <Badge variant="outline" className="shrink-0 text-[10px]">
-                  {node.kind}
+                  {nodeKindLabel(node.kind, copy)}
                 </Badge>
               </div>
               <div className="text-muted-foreground mt-1 line-clamp-2 min-w-0 break-words text-xs">
@@ -238,22 +317,62 @@ function WorkflowTreeNode({
             </div>
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-3 space-y-2 border-t pt-3 text-xs">
-            <div className="grid grid-cols-2 gap-2">
-              <DetailKV
-                label={copy.labels.status}
-                value={statusLabel(node.status, copy.status)}
-              />
-              <DetailKV label={copy.labels.caller} value={node.caller ?? "—"} />
-              <DetailKV label={copy.labels.seq} value={node.seq?.toString() ?? "—"} />
-              <DetailKV
-                label={copy.labels.event}
-                value={
-                  typeof node.metadata?.event_type === "string"
-                    ? node.metadata.event_type
-                    : "—"
-                }
-              />
-            </div>
+            {isDecision ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <DetailKV
+                    label={copy.labels.status}
+                    value={statusLabel(node.status, copy.status)}
+                  />
+                  <DetailKV
+                    label={copy.labels.decisionType}
+                    value={metadataString(node.metadata, "decision_type") || "—"}
+                  />
+                  <DetailKV
+                    label={copy.labels.relatedTool}
+                    value={metadataString(node.metadata, "related_tool") || "—"}
+                  />
+                  <DetailKV
+                    label={copy.labels.seq}
+                    value={node.seq?.toString() ?? "—"}
+                  />
+                </div>
+                <DetailBlock
+                  label={copy.labels.rationale}
+                  value={rationale || copy.noSummary}
+                />
+                <DetailBlock
+                  label={copy.labels.nextStep}
+                  value={nextStep || copy.noSummary}
+                />
+                {outcome && (
+                  <DetailBlock label={copy.labels.outcome} value={outcome} />
+                )}
+                {alternatives.length > 0 && (
+                  <DetailBlock
+                    label={copy.labels.alternatives}
+                    value={alternatives.join("\n")}
+                  />
+                )}
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <DetailKV
+                  label={copy.labels.status}
+                  value={statusLabel(node.status, copy.status)}
+                />
+                <DetailKV label={copy.labels.caller} value={node.caller ?? "—"} />
+                <DetailKV label={copy.labels.seq} value={node.seq?.toString() ?? "—"} />
+                <DetailKV
+                  label={copy.labels.event}
+                  value={
+                    typeof node.metadata?.event_type === "string"
+                      ? node.metadata.event_type
+                      : "—"
+                  }
+                />
+              </div>
+            )}
             {node.artifact_path && (
               <button
                 type="button"
@@ -361,6 +480,17 @@ function DetailKV({ label, value }: { label: string; value: string }) {
   );
 }
 
+function DetailBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-muted/50 p-2">
+      <div className="text-muted-foreground text-[10px] uppercase">{label}</div>
+      <div className="mt-1 min-w-0 whitespace-pre-wrap break-words text-xs leading-5">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function EmptyDetailsState({
   icon,
   title,
@@ -375,6 +505,154 @@ function EmptyDetailsState({
       <div className="mb-3 [&_svg]:size-8">{icon}</div>
       <div className="text-foreground text-sm font-medium">{title}</div>
       <div className="mt-1 max-w-xs text-xs leading-5">{description}</div>
+    </div>
+  );
+}
+
+function PlanList({
+  title,
+  items,
+  copy,
+}: {
+  title: string;
+  items?: string[];
+  copy: ThreadDetailsCopy;
+}) {
+  const cleanItems = (items ?? []).filter(Boolean);
+  return (
+    <section className="space-y-2">
+      <div className="text-sm font-medium">{title}</div>
+      {cleanItems.length > 0 ? (
+        <ol className="space-y-2">
+          {cleanItems.map((item, index) => (
+            <li
+              key={`${title}-${index}-${item}`}
+              className="flex min-w-0 gap-2 rounded-md border p-2 text-sm"
+            >
+              <span className="text-muted-foreground shrink-0 font-mono text-xs">
+                {index + 1}.
+              </span>
+              <span className="min-w-0 break-words">{item}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="text-muted-foreground rounded-md border border-dashed p-3 text-xs">
+          {copy.planNoItems}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlanSection({
+  plan,
+  onApprove,
+  onRevise,
+  approving,
+}: {
+  plan?: PlanState | null;
+  onApprove: () => void;
+  onRevise: () => void;
+  approving: boolean;
+}) {
+  const { t, locale } = useI18n();
+  const copy = t.threadDetails;
+
+  if (!plan) {
+    return (
+      <EmptyDetailsState
+        icon={<FileTextIcon />}
+        title={copy.noPlanTitle}
+        description={copy.noPlanDescription}
+      />
+    );
+  }
+
+  const revisions = plan.revisions ?? [];
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border bg-muted/20 p-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">{copy.planSummary}</div>
+            <div className="mt-1 min-w-0 break-words text-sm">
+              {plan.summary ?? copy.planNoItems}
+            </div>
+          </div>
+          <Badge variant="outline" className="shrink-0">
+            {planStatusLabel(plan.status, copy.planStatus)}
+          </Badge>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <DetailKV
+            label={copy.labels.updated}
+            value={formatDateTime(plan.updated_at, locale)}
+          />
+          <DetailKV
+            label={copy.labels.revisions}
+            value={String(plan.revision_count ?? revisions.length ?? 0)}
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={onApprove}
+            disabled={!planCanBeApproved(plan) || approving}
+          >
+            <CheckCircle2Icon className="size-4" />
+            {copy.confirmPlan}
+          </Button>
+          <Button size="sm" variant="outline" onClick={onRevise}>
+            <PencilIcon className="size-4" />
+            {copy.revisePlan}
+          </Button>
+        </div>
+      </div>
+
+      <PlanList title={copy.planPhases} items={plan.phases} copy={copy} />
+      <PlanList title={copy.planDeliverables} items={plan.deliverables} copy={copy} />
+      <PlanList
+        title={copy.planOpenQuestions}
+        items={plan.open_questions}
+        copy={copy}
+      />
+      <PlanList
+        title={copy.planAcceptanceCriteria}
+        items={plan.acceptance_criteria}
+        copy={copy}
+      />
+      <PlanList title={copy.planRisks} items={plan.risk_points} copy={copy} />
+
+      <section className="space-y-2">
+        <div className="text-sm font-medium">{copy.planRevisionHistory}</div>
+        {revisions.length > 0 ? (
+          <div className="space-y-2">
+            {revisions.map((revision, index) => (
+              <div
+                key={`${revision.revision_number ?? index}-${revision.updated_at ?? ""}`}
+                className="rounded-md border p-3 text-xs"
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    #{revision.revision_number ?? index + 1}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {formatDateTime(revision.updated_at, locale)}
+                  </span>
+                </div>
+                <div className="min-w-0 break-words">
+                  {revision.note ?? copy.planNoItems}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-muted-foreground rounded-md border border-dashed p-3 text-xs">
+            {copy.planNoItems}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -492,11 +770,11 @@ function ExportMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={() => onExportThread("markdown")}>
           <FileTextIcon className="size-4" />
-          {t.common.exportAsMarkdown}
+          {t.threadDetails.exportThreadMarkdown}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onExportThread("json")}>
           <FileJsonIcon className="size-4" />
-          {t.common.exportAsJSON}
+          {t.threadDetails.exportThreadJSON}
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={!workflow}
@@ -566,10 +844,12 @@ export function ThreadDetailsTrigger({
 }: ThreadDetailsTriggerProps) {
   const { t, locale } = useI18n();
   const copy = t.threadDetails;
-  const { thread } = useThread();
+  const { thread, sendMessage } = useThread();
   const { artifacts, latestArtifact, setOpen: setArtifactsOpen, select } = useArtifacts();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState("flow");
+  const [tab, setTab] = useState("plan");
+  const [approvingPlan, setApprovingPlan] = useState(false);
+  const [optimisticPlan, setOptimisticPlan] = useState<PlanState | null>(null);
   const { workflow, run, runs, active, isFetching, refetch } = useThreadWorkflow({
     threadId,
     currentRunId,
@@ -577,6 +857,11 @@ export function ThreadDetailsTrigger({
   });
 
   const messages = thread.messages;
+  const plan = optimisticPlan ?? thread.values?.plan ?? null;
+
+  useEffect(() => {
+    setOptimisticPlan(null);
+  }, [thread.values?.plan?.updated_at]);
   const artifactCount =
     workflow?.artifacts.length !== undefined && workflow.artifacts.length > 0
       ? workflow.artifacts.length
@@ -641,6 +926,56 @@ export function ThreadDetailsTrigger({
     }
   }, [copy.stopFailed, copy.stopRequested, currentRunId, refetch, run?.run_id, threadId]);
 
+  const handleApprovePlan = useCallback(async () => {
+    if (!plan) return;
+    const approvedAt = new Date().toISOString();
+    const nextPlan: PlanState = {
+      ...plan,
+      status: "approved",
+      updated_at: approvedAt,
+      revisions: [
+        ...(plan.revisions ?? []),
+        {
+          revision_number: (plan.revision_count ?? plan.revisions?.length ?? 0) + 1,
+          source: "user",
+          note: copy.confirmPlan,
+          status: "approved",
+          updated_at: approvedAt,
+        },
+      ],
+    };
+    nextPlan.revision_count = nextPlan.revisions?.length ?? plan.revision_count ?? 0;
+    setApprovingPlan(true);
+    try {
+      await getAPIClient().threads.updateState(threadId, {
+        values: {
+          plan: nextPlan,
+        },
+      });
+      setOptimisticPlan(nextPlan);
+      await sendMessage?.(copy.planExecutionMessage);
+      toast.success(copy.planApproved);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : copy.planApprovalFailed);
+    } finally {
+      setApprovingPlan(false);
+    }
+  }, [
+    copy.confirmPlan,
+    copy.planApprovalFailed,
+    copy.planApproved,
+    copy.planExecutionMessage,
+    plan,
+    sendMessage,
+    threadId,
+  ]);
+
+  const handleRevisePlan = useCallback(() => {
+    const feedback = window.prompt(copy.revisionPrompt);
+    if (!feedback?.trim()) return;
+    void sendMessage?.(`${copy.revisionPrompt}\n${feedback.trim()}`);
+  }, [copy.revisionPrompt, sendMessage]);
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <Tooltip content={copy.tooltip}>
@@ -681,7 +1016,10 @@ export function ThreadDetailsTrigger({
         </SheetHeader>
         <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
           <div className="border-b px-4 py-2">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="plan" onClick={() => setTab("plan")}>
+                {copy.plan}
+              </TabsTrigger>
               <TabsTrigger value="flow" onClick={() => setTab("flow")}>
                 {copy.flow}
               </TabsTrigger>
@@ -699,6 +1037,15 @@ export function ThreadDetailsTrigger({
 
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-4">
+              <TabsContent value="plan" className="mt-0">
+                <PlanSection
+                  plan={plan}
+                  onApprove={() => void handleApprovePlan()}
+                  onRevise={handleRevisePlan}
+                  approving={approvingPlan}
+                />
+              </TabsContent>
+
               <TabsContent value="flow" className="mt-0 space-y-4">
                 <RunSummary workflow={workflow} active={active} streaming={streaming} />
                 <WorkflowTree

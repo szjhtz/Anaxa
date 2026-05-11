@@ -72,6 +72,29 @@ function hasVisualOutputIntent(text: string): boolean {
   return VISUAL_OUTPUT_INTENT_PATTERN.test(text);
 }
 
+function getToolEventInput(data: unknown): Record<string, unknown> {
+  if (typeof data === "object" && data !== null) {
+    const input = Reflect.get(data, "input");
+    if (typeof input === "object" && input !== null && !Array.isArray(input)) {
+      return input as Record<string, unknown>;
+    }
+    if (typeof input === "string") {
+      return { input };
+    }
+    const args = Reflect.get(data, "args");
+    if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+      return args as Record<string, unknown>;
+    }
+  }
+  return {};
+}
+
+function getToolEventRunId(event: unknown): string | undefined {
+  if (typeof event !== "object" || event === null) return undefined;
+  const runId = Reflect.get(event, "run_id");
+  return typeof runId === "string" && runId.length > 0 ? runId : undefined;
+}
+
 export function useThreadStream({
   threadId,
   context,
@@ -191,6 +214,26 @@ export function useThreadStream({
       );
     },
     onLangChainEvent(event) {
+      if (event.event === "on_tool_start") {
+        const runId = currentRunIdRef.current;
+        const currentThreadId = threadIdRef.current;
+        if (runId && currentThreadId) {
+          void createRunEvent(currentThreadId, runId, {
+            event_type: "ai_tool_calls",
+            caller: "assistant",
+            content: {
+              type: "ai",
+              tool_calls: [
+                {
+                  name: event.name || "tool",
+                  args: getToolEventInput(event.data),
+                  id: getToolEventRunId(event) ?? `${event.name || "tool"}-start`,
+                },
+              ],
+            },
+          }).catch(() => undefined);
+        }
+      }
       if (event.event === "on_tool_end") {
         listeners.current.onToolEnd?.({
           name: event.name,

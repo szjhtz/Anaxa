@@ -24,8 +24,9 @@ HIDDEN_REASONING_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 THINK_TAG_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+DECISION_TOOL_NAME = "record_decision"
 
-NodeKind = Literal["user", "agent", "subagent", "tool", "artifact", "checkpoint", "final", "error", "event"]
+NodeKind = Literal["user", "agent", "decision", "subagent", "tool", "artifact", "checkpoint", "final", "error", "event"]
 NodeStatus = Literal["pending", "running", "success", "error", "interrupted"]
 
 
@@ -229,6 +230,123 @@ def _node_status(kind: NodeKind, run_status: str) -> NodeStatus:
     return "success"
 
 
+def _decision_status(status: str | None, run_status: str) -> NodeStatus:
+    normalized = str(status or "").strip().lower()
+    if normalized in {"pending", "planned", "queued", "awaiting"}:
+        return "pending"
+    if normalized in {"running", "executing", "in_progress", "active"}:
+        return "running"
+    if normalized in {"error", "failed", "blocked"}:
+        return "error"
+    if normalized in {"interrupted", "cancelled", "canceled"}:
+        return "interrupted"
+    if run_status == "error" and normalized in {"", "unknown"}:
+        return "error"
+    return "success"
+
+
+def _tool_name_from_content(caller: str, content: dict[str, Any]) -> str:
+    name = content.get("name")
+    if isinstance(name, str) and name:
+        return name
+    return caller or ""
+
+
+def _is_decision_tool_name(name: str | None) -> bool:
+    return str(name or "").strip() == DECISION_TOOL_NAME
+
+
+def _try_parse_json(value: str) -> Any:
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _find_decision_payload(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, str):
+        parsed = _try_parse_json(value)
+        return _find_decision_payload(parsed) if parsed is not None else None
+
+    if isinstance(value, list):
+        for item in value:
+            found = _find_decision_payload(item)
+            if found is not None:
+                return found
+        return None
+
+    if not isinstance(value, dict):
+        return None
+
+    if isinstance(value.get("title"), str) and (
+        isinstance(value.get("rationale"), str)
+        or isinstance(value.get("next_step"), str)
+        or isinstance(value.get("decision_type"), str)
+    ):
+        return value
+
+    for key in ("decision", "args", "input", "output", "content", "payload", "result"):
+        if key in value:
+            found = _find_decision_payload(value.get(key))
+            if found is not None:
+                return found
+
+    for item in value.values():
+        found = _find_decision_payload(item)
+        if found is not None:
+            return found
+    return None
+
+
+def _normalize_decision_payload(payload: dict[str, Any], *, tool_call_id: str | None = None) -> dict[str, Any]:
+    alternatives = payload.get("alternatives")
+    if not isinstance(alternatives, list):
+        alternatives = []
+    return {
+        "title": _truncate(str(payload.get("title") or "Decision"), 160),
+        "decision_type": _truncate(str(payload.get("decision_type") or "decision"), 80),
+        "rationale": _truncate(str(payload.get("rationale") or ""), 1200),
+        "next_step": _truncate(str(payload.get("next_step") or ""), 1200),
+        "status": _truncate(str(payload.get("status") or "success"), 80),
+        "alternatives": [_truncate(str(item), 240) for item in alternatives[:8] if str(item).strip()],
+        "related_tool": _truncate(str(payload.get("related_tool") or ""), 160) or None,
+        "outcome": _truncate(str(payload.get("outcome") or ""), 1200) or None,
+        "tool_call_id": tool_call_id,
+    }
+
+
+def _decision_payloads_from_event(event: WorkflowEvent, content: dict[str, Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    tool_calls = content.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for call in tool_calls:
+            if not isinstance(call, dict) or not _is_decision_tool_name(call.get("name")):
+                continue
+            args = call.get("args")
+            if not isinstance(args, dict):
+                continue
+            payloads.append(_normalize_decision_payload(args, tool_call_id=str(call.get("id") or "") or None))
+
+    if event.event_type == "tool_message" and _is_decision_tool_name(_tool_name_from_content(event.caller, content)):
+        found = _find_decision_payload(content)
+        if found is not None:
+            payloads.append(_normalize_decision_payload(found, tool_call_id=content.get("tool_call_id") if isinstance(content.get("tool_call_id"), str) else None))
+
+    return payloads
+
+
+def _content_without_decision_tool_calls(content: dict[str, Any]) -> dict[str, Any]:
+    tool_calls = content.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return content
+    kept = [call for call in tool_calls if not (isinstance(call, dict) and _is_decision_tool_name(call.get("name")))]
+    if len(kept) == len(tool_calls):
+        return content
+    updated = dict(content)
+    updated["tool_calls"] = kept
+    return updated
+
+
 def _extract_artifacts_from_event(content: dict[str, Any]) -> list[str]:
     found: list[str] = []
     artifacts = content.get("artifacts")
@@ -260,6 +378,215 @@ def _usage_from_event(content: dict[str, Any]) -> WorkflowUsage:
         output_tokens=int(usage.get("output_tokens") or 0),
         total_tokens=int(usage.get("total_tokens") or 0),
     )
+
+
+def _event_node(
+    *,
+    event: WorkflowEvent,
+    content: dict[str, Any],
+    kind: NodeKind,
+    run_status: str,
+) -> WorkflowNode:
+    return WorkflowNode(
+        id=f"event-{event.seq}",
+        kind=kind,
+        label=_node_label(kind, event.event_type, event.caller, content),
+        status=_node_status(kind, run_status),
+        summary=_content_summary(content),
+        caller=event.caller,
+        tool_name=content.get("name") if isinstance(content.get("name"), str) else None,
+        seq=event.seq,
+        created_at=event.created_at,
+        metadata={"event_type": event.event_type},
+    )
+
+
+def _artifact_node(*, artifact_path: str, event: WorkflowEvent) -> WorkflowNode:
+    return WorkflowNode(
+        id=_artifact_node_id(artifact_path),
+        kind="artifact",
+        label=Path(artifact_path).name,
+        status="success",
+        summary=artifact_path,
+        artifact_path=artifact_path,
+        seq=event.seq,
+        created_at=event.created_at,
+    )
+
+
+def _append_artifact_nodes(
+    *,
+    parent_id: str | None,
+    event: WorkflowEvent,
+    content: dict[str, Any],
+    nodes: list[WorkflowNode],
+    edges: list[WorkflowEdge],
+    seen_artifact_nodes: set[str],
+) -> None:
+    if parent_id is None:
+        return
+    for artifact_path in _extract_artifacts_from_event(content):
+        if artifact_path in seen_artifact_nodes:
+            continue
+        seen_artifact_nodes.add(artifact_path)
+        artifact_node = _artifact_node(artifact_path=artifact_path, event=event)
+        nodes.append(artifact_node)
+        edges.append(
+            WorkflowEdge(
+                id=f"edge-{parent_id}-{artifact_node.id}",
+                source=parent_id,
+                target=artifact_node.id,
+                label="created",
+            )
+        )
+
+
+def _build_event_tree_nodes(
+    *,
+    record: RunRecord,
+    event_items: list[tuple[WorkflowEvent, dict[str, Any]]],
+) -> tuple[list[WorkflowNode], list[WorkflowEdge]]:
+    nodes: list[WorkflowNode] = []
+    edges: list[WorkflowEdge] = []
+    seen_artifact_nodes: set[str] = set()
+    previous_node_id: str | None = None
+
+    for event, content in event_items:
+        kind = _node_kind(event.event_type, event.caller, content)
+        node = _event_node(event=event, content=content, kind=kind, run_status=record.status.value)
+        nodes.append(node)
+        if previous_node_id is not None:
+            edges.append(WorkflowEdge(id=f"edge-{previous_node_id}-{node.id}", source=previous_node_id, target=node.id))
+        previous_node_id = node.id
+
+        _append_artifact_nodes(
+            parent_id=node.id,
+            event=event,
+            content=content,
+            nodes=nodes,
+            edges=edges,
+            seen_artifact_nodes=seen_artifact_nodes,
+        )
+
+    return nodes, edges
+
+
+def _decision_node(
+    *,
+    event: WorkflowEvent,
+    payload: dict[str, Any],
+    index: int,
+    run_status: str,
+) -> WorkflowNode:
+    node_id = f"decision-{event.seq}-{index}"
+    rationale = str(payload.get("rationale") or "")
+    next_step = str(payload.get("next_step") or "")
+    outcome = str(payload.get("outcome") or "")
+    summary = rationale or next_step or outcome
+    return WorkflowNode(
+        id=node_id,
+        kind="decision",
+        label=str(payload.get("title") or "Decision"),
+        status=_decision_status(payload.get("status") if isinstance(payload.get("status"), str) else None, run_status),
+        summary=summary,
+        caller=event.caller,
+        tool_name=DECISION_TOOL_NAME,
+        seq=event.seq,
+        created_at=event.created_at,
+        metadata={
+            "event_type": event.event_type,
+            "decision_type": payload.get("decision_type") or "decision",
+            "rationale": rationale,
+            "next_step": next_step,
+            "decision_status": payload.get("status") or "success",
+            "alternatives": payload.get("alternatives") or [],
+            "related_tool": payload.get("related_tool"),
+            "outcome": payload.get("outcome"),
+            "tool_call_id": payload.get("tool_call_id"),
+        },
+    )
+
+
+def _build_decision_tree_nodes(
+    *,
+    record: RunRecord,
+    event_items: list[tuple[WorkflowEvent, dict[str, Any]]],
+) -> tuple[list[WorkflowNode], list[WorkflowEdge]]:
+    nodes: list[WorkflowNode] = []
+    edges: list[WorkflowEdge] = []
+    seen_artifact_nodes: set[str] = set()
+    decision_tool_call_ids: set[str] = set()
+    latest_decision_id: str | None = None
+    previous_decision_id: str | None = None
+
+    for event, original_content in event_items:
+        decision_payloads = _decision_payloads_from_event(event, original_content)
+        for index, payload in enumerate(decision_payloads):
+            tool_call_id = payload.get("tool_call_id")
+            if isinstance(tool_call_id, str) and tool_call_id:
+                if event.event_type == "tool_message" and tool_call_id in decision_tool_call_ids:
+                    continue
+                decision_tool_call_ids.add(tool_call_id)
+
+            node = _decision_node(
+                event=event,
+                payload=payload,
+                index=index,
+                run_status=record.status.value,
+            )
+            nodes.append(node)
+            if previous_decision_id is not None:
+                edges.append(
+                    WorkflowEdge(
+                        id=f"edge-{previous_decision_id}-{node.id}",
+                        source=previous_decision_id,
+                        target=node.id,
+                        label="next",
+                    )
+                )
+            previous_decision_id = node.id
+            latest_decision_id = node.id
+
+        if event.event_type == "tool_message" and _is_decision_tool_name(_tool_name_from_content(event.caller, original_content)):
+            continue
+
+        content = _content_without_decision_tool_calls(original_content)
+        if event.event_type == "ai_tool_calls" and not content.get("tool_calls"):
+            continue
+
+        kind = _node_kind(event.event_type, event.caller, content)
+        if kind in {"user", "agent", "checkpoint", "event"}:
+            _append_artifact_nodes(
+                parent_id=latest_decision_id,
+                event=event,
+                content=content,
+                nodes=nodes,
+                edges=edges,
+                seen_artifact_nodes=seen_artifact_nodes,
+            )
+            continue
+
+        node = _event_node(event=event, content=content, kind=kind, run_status=record.status.value)
+        nodes.append(node)
+        if latest_decision_id is not None:
+            edges.append(
+                WorkflowEdge(
+                    id=f"edge-{latest_decision_id}-{node.id}",
+                    source=latest_decision_id,
+                    target=node.id,
+                )
+            )
+
+        _append_artifact_nodes(
+            parent_id=node.id if latest_decision_id is not None else None,
+            event=event,
+            content=content,
+            nodes=nodes,
+            edges=edges,
+            seen_artifact_nodes=seen_artifact_nodes,
+        )
+
+    return nodes, edges
 
 
 def _list_artifacts(thread_id: str) -> list[WorkflowArtifact]:
@@ -296,11 +623,8 @@ def build_workflow_snapshot(
     has_more: bool,
 ) -> WorkflowSnapshot:
     events: list[WorkflowEvent] = []
-    nodes: list[WorkflowNode] = []
-    edges: list[WorkflowEdge] = []
     usage = WorkflowUsage()
-    seen_artifact_nodes: set[str] = set()
-    previous_node_id: str | None = None
+    event_items: list[tuple[WorkflowEvent, dict[str, Any]]] = []
 
     for row in event_rows:
         content = _redact(row.get("content") or {})
@@ -316,48 +640,18 @@ def build_workflow_snapshot(
             created_at=row["created_at"],
         )
         events.append(event)
+        event_items.append((event, content))
 
         event_usage = _usage_from_event(content)
         usage.input_tokens += event_usage.input_tokens
         usage.output_tokens += event_usage.output_tokens
         usage.total_tokens += event_usage.total_tokens
 
-        kind = _node_kind(event.event_type, event.caller, content)
-        node_id = f"event-{event.seq}"
-        node = WorkflowNode(
-            id=node_id,
-            kind=kind,
-            label=_node_label(kind, event.event_type, event.caller, content),
-            status=_node_status(kind, record.status.value),
-            summary=summary,
-            caller=event.caller,
-            tool_name=content.get("name") if isinstance(content.get("name"), str) else None,
-            seq=event.seq,
-            created_at=event.created_at,
-            metadata={"event_type": event.event_type},
-        )
-        nodes.append(node)
-        if previous_node_id is not None:
-            edges.append(WorkflowEdge(id=f"edge-{previous_node_id}-{node_id}", source=previous_node_id, target=node_id))
-        previous_node_id = node_id
-
-        for artifact_path in _extract_artifacts_from_event(content):
-            if artifact_path in seen_artifact_nodes:
-                continue
-            seen_artifact_nodes.add(artifact_path)
-            artifact_id = _artifact_node_id(artifact_path)
-            artifact_node = WorkflowNode(
-                id=artifact_id,
-                kind="artifact",
-                label=Path(artifact_path).name,
-                status="success",
-                summary=artifact_path,
-                artifact_path=artifact_path,
-                seq=event.seq,
-                created_at=event.created_at,
-            )
-            nodes.append(artifact_node)
-            edges.append(WorkflowEdge(id=f"edge-{node_id}-{artifact_id}", source=node_id, target=artifact_id, label="created"))
+    has_decisions = any(_decision_payloads_from_event(event, content) for event, content in event_items)
+    if has_decisions:
+        nodes, edges = _build_decision_tree_nodes(record=record, event_items=event_items)
+    else:
+        nodes, edges = _build_event_tree_nodes(record=record, event_items=event_items)
 
     artifacts = _list_artifacts(record.thread_id)
 

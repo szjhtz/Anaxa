@@ -2,9 +2,11 @@ from .academic_research_tool import academic_research_tool
 from .citation_audit_tool import citation_audit_tool
 from .clarification_tool import ask_clarification_tool
 from .dataset_benchmark_discovery_tool import dataset_benchmark_discovery_tool
+from .decision_tool import record_decision_tool
 from .experiment_lab_tool import experiment_lab_tool
 from .manuscript_export_tool import manuscript_export_tool
 from .matlab_execution_tool import matlab_execution_tool
+from .plan_tool import write_plan_tool
 from .present_file_tool import present_file_tool
 from .research_assistant_tool import research_assistant_tool
 from .setup_agent_tool import setup_agent
@@ -18,8 +20,10 @@ __all__ = [
     "academic_research_tool",
     "citation_audit_tool",
     "dataset_benchmark_discovery_tool",
+    "record_decision_tool",
     "experiment_lab_tool",
     "matlab_execution_tool",
+    "write_plan_tool",
     "manuscript_export_tool",
     "present_file_tool",
     "research_assistant_tool",

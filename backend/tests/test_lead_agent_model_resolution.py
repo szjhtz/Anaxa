@@ -201,6 +201,21 @@ def test_build_middlewares_adds_visual_quality_only_for_visual_intent(monkeypatc
     assert not any(isinstance(m, lead_agent_module.VisualQualityMiddleware) for m in bootstrap)
 
 
+def test_build_middlewares_suppresses_plan_middleware_for_bootstrap(monkeypatch):
+    app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda: None)
+    monkeypatch.setattr(lead_agent_module, "_create_todo_list_middleware", lambda is_plan_mode: None)
+
+    middlewares = lead_agent_module._build_middlewares(
+        {"configurable": {"is_plan_mode": True, "is_bootstrap": True}},
+        model_name="safe-model",
+    )
+
+    assert not any(isinstance(m, lead_agent_module.PlanMiddleware) for m in middlewares)
+
+
 def test_make_lead_agent_passes_visual_intent_to_tools_and_prompt(monkeypatch):
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
@@ -238,6 +253,44 @@ def test_make_lead_agent_passes_visual_intent_to_tools_and_prompt(monkeypatch):
 
     assert captured_tools["visual_output_intent"] is True
     assert captured_prompt["visual_output_intent"] is True
+
+
+def test_make_lead_agent_passes_plan_mode_to_tools_and_prompt(monkeypatch):
+    app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+
+    import medrix_flow.tools as tools_module
+
+    captured_tools: dict[str, object] = {}
+    captured_prompt: dict[str, object] = {}
+
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
+    monkeypatch.setattr(
+        tools_module,
+        "get_available_tools",
+        lambda **kwargs: captured_tools.update(kwargs) or [],
+    )
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None: [])
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: object())
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "apply_prompt_template",
+        lambda **kwargs: captured_prompt.update(kwargs) or "prompt",
+    )
+
+    lead_agent_module.make_lead_agent(
+        {
+            "configurable": {
+                "model_name": "safe-model",
+                "thinking_enabled": False,
+                "is_plan_mode": True,
+                "subagent_enabled": False,
+            }
+        }
+    )
+
+    assert captured_tools["plan_mode"] is True
+    assert captured_prompt["plan_mode"] is True
 
 
 def test_make_lead_agent_passes_synthetic_data_mode_to_prompt(monkeypatch):

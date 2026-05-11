@@ -13,11 +13,13 @@ from medrix_flow.tools.builtins import (
     manuscript_export_tool,
     matlab_execution_tool,
     present_file_tool,
+    record_decision_tool,
     research_assistant_tool,
     task_tool,
     view_image_tool,
     visual_quality_check_tool,
     visual_refinement_check_tool,
+    write_plan_tool,
 )
 from medrix_flow.tools.builtins.tool_search import reset_deferred_registry
 
@@ -32,6 +34,8 @@ BUILTIN_TOOLS = [
     academic_research_tool,
     experiment_lab_tool,
     matlab_execution_tool,
+    record_decision_tool,
+    write_plan_tool,
     research_assistant_tool,
 ]
 
@@ -46,6 +50,7 @@ def get_available_tools(
     include_mcp: bool = True,
     model_name: str | None = None,
     subagent_enabled: bool = False,
+    plan_mode: bool = False,
     visual_output_intent: bool = False,
 ) -> list[BaseTool]:
     """Get all available tools from config.
@@ -58,6 +63,7 @@ def get_available_tools(
         include_mcp: Whether to include tools from MCP servers (default: True).
         model_name: Optional model name to determine if vision tools should be included.
         subagent_enabled: Whether to include subagent tools (task, task_status).
+        plan_mode: Whether to expose plan-writing tools for complex requests.
         visual_output_intent: Whether the current request is expected to produce visual output.
 
     Returns:
@@ -73,6 +79,11 @@ def get_available_tools(
     if subagent_enabled:
         builtin_tools.extend(SUBAGENT_TOOLS)
         logger.info("Including subagent tools (task)")
+
+    if not plan_mode:
+        builtin_tools = [tool for tool in builtin_tools if tool != write_plan_tool]
+    else:
+        logger.info("Including plan tools (write_plan)")
 
     # If no model_name specified, use the first model (default)
     if model_name is None and config.models:

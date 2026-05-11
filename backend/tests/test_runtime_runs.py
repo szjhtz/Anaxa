@@ -12,6 +12,7 @@ from medrix_flow.runtime import MemoryStreamBridge, SQLiteFeedbackRepo, SQLiteRu
 from medrix_flow.runtime.db import SQLiteRuntimeDB
 from medrix_flow.runtime.runs import RunManager, RunStatus
 from medrix_flow.runtime.runs.manager import ConflictError
+from medrix_flow.tools.builtins.decision_tool import record_decision_tool
 
 
 class FakeCheckpointer:
@@ -240,6 +241,127 @@ def test_workflow_endpoint_normalizes_run_events():
 
         delta = await service.build_workflow("thread-1", "run-workflow-1", limit=20, after_seq=2)
         assert [event["seq"] for event in delta["events"]] == [3]
+
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_record_decision_tool_returns_structured_summary():
+    result = record_decision_tool.func(
+        title="Choose benchmark discovery",
+        decision_type="tool_selection",
+        rationale="The user needs current datasets and baselines.",
+        next_step="Run dataset_benchmark_discovery before drafting experiments.",
+        status="running",
+        alternatives=["Use general web search only"],
+        related_tool="dataset_benchmark_discovery",
+        outcome=None,
+        tool_call_id="decision-call-1",
+    )
+
+    assert result.update["messages"][0].name == "record_decision"
+    assert '"title": "Choose benchmark discovery"' in result.update["messages"][0].content
+    assert '"related_tool": "dataset_benchmark_discovery"' in result.update["messages"][0].content
+
+
+def test_workflow_builds_decision_tree_from_recorded_decisions():
+    async def scenario():
+        service, db = await _make_runtime_service(messages=[HumanMessage(content="before")])
+
+        await service.start_run(
+            "thread-1",
+            runs.RunCreateRequest(run_id="run-decision-tree", assistant_id="lead_agent"),
+        )
+        await service.record_external_event(
+            "thread-1",
+            "run-decision-tree",
+            event_type="human_message",
+            caller="user",
+            content={"type": "human", "content": "Find datasets and write an experiment paper"},
+        )
+        await service.record_external_event(
+            "thread-1",
+            "run-decision-tree",
+            event_type="ai_tool_calls",
+            caller="assistant",
+            content={
+                "type": "ai",
+                "tool_calls": [
+                    {
+                        "name": "record_decision",
+                        "args": {
+                            "title": "Discover benchmark candidates first",
+                            "decision_type": "tool_selection",
+                            "rationale": "The paper needs verifiable datasets, baselines, and metrics before experiments.",
+                            "next_step": "Run dataset_benchmark_discovery and use its map for experiment planning.",
+                            "status": "running",
+                            "alternatives": ["Draft directly from topic"],
+                            "related_tool": "dataset_benchmark_discovery",
+                            "outcome": "Benchmark map will guide the experiment contract.",
+                        },
+                        "id": "decision-call-1",
+                    }
+                ],
+            },
+        )
+        await service.record_external_event(
+            "thread-1",
+            "run-decision-tree",
+            event_type="tool_message",
+            caller="record_decision",
+            content={
+                "type": "tool",
+                "name": "record_decision",
+                "tool_call_id": "decision-call-1",
+                "content": '{"title":"Discover benchmark candidates first","decision_type":"tool_selection","rationale":"recorded","next_step":"continue","status":"success"}',
+            },
+        )
+        await service.record_external_event(
+            "thread-1",
+            "run-decision-tree",
+            event_type="ai_tool_calls",
+            caller="assistant",
+            content={
+                "type": "ai",
+                "tool_calls": [
+                    {
+                        "name": "dataset_benchmark_discovery",
+                        "args": {"topic": "medical image segmentation"},
+                        "id": "tool-call-1",
+                    }
+                ],
+            },
+        )
+        await service.record_external_event(
+            "thread-1",
+            "run-decision-tree",
+            event_type="tool_message",
+            caller="dataset_benchmark_discovery",
+            content={
+                "type": "tool",
+                "name": "dataset_benchmark_discovery",
+                "content": "Dataset/benchmark map ready.",
+                "artifacts": ["/mnt/user-data/outputs/dataset_benchmark_map.json"],
+            },
+        )
+
+        workflow = await service.build_workflow("thread-1", "run-decision-tree", limit=20)
+        kinds = [node["kind"] for node in workflow["nodes"]]
+        assert kinds[0] == "decision"
+        assert "user" not in kinds
+        assert "artifact" in kinds
+        assert not any(node["kind"] == "tool" and node.get("tool_name") == "record_decision" for node in workflow["nodes"])
+
+        decision = workflow["nodes"][0]
+        assert decision["label"] == "Discover benchmark candidates first"
+        assert decision["metadata"]["rationale"] == "The paper needs verifiable datasets, baselines, and metrics before experiments."
+        assert decision["metadata"]["next_step"] == "Run dataset_benchmark_discovery and use its map for experiment planning."
+        assert decision["metadata"]["outcome"] == "Benchmark map will guide the experiment contract."
+
+        decision_edges = [edge for edge in workflow["edges"] if edge["source"] == decision["id"]]
+        assert any(edge["target"].startswith("event-") for edge in decision_edges)
+        assert any(node["artifact_path"] == "/mnt/user-data/outputs/dataset_benchmark_map.json" for node in workflow["nodes"])
 
         await db.close()
 
