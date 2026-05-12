@@ -483,6 +483,37 @@ class TestSyncExecutionPath:
         assert result.task_id == "predefined-id"
         assert result.status == SubagentStatus.COMPLETED
 
+    def test_execute_does_not_overwrite_timed_out_result_holder(self, classes, base_config, mock_agent, msg):
+        """Background completion must not change a task already marked timed out."""
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+
+        final_state = {"messages": [msg.human("Task"), msg.ai("late result", "msg-late")]}
+        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
+
+        result_holder = SubagentResult(
+            task_id="predefined-id",
+            trace_id="test-trace",
+            status=SubagentStatus.TIMED_OUT,
+            error="Execution timed out after 1 seconds",
+            completed_at=datetime.now(),
+        )
+
+        executor = SubagentExecutor(
+            config=base_config,
+            tools=[],
+            thread_id="test-thread",
+        )
+
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = executor.execute("Task", result_holder=result_holder)
+
+        assert result is result_holder
+        assert result.status == SubagentStatus.TIMED_OUT
+        assert result.error == "Execution timed out after 1 seconds"
+        assert result.result is None
+
 
 # -----------------------------------------------------------------------------
 # Async Tool Support Tests (MCP Tools)

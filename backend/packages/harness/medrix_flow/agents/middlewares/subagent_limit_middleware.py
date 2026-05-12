@@ -7,18 +7,17 @@ from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 from langgraph.runtime import Runtime
 
-from medrix_flow.subagents.executor import MAX_CONCURRENT_SUBAGENTS
+from medrix_flow.config.subagents_config import get_subagents_app_config
 
 logger = logging.getLogger(__name__)
 
-# Valid range for max_concurrent_subagents
-MIN_SUBAGENT_LIMIT = 2
-MAX_SUBAGENT_LIMIT = 4
+MIN_SUBAGENT_LIMIT = 1
 
 
-def _clamp_subagent_limit(value: int) -> int:
-    """Clamp subagent limit to valid range [2, 4]."""
-    return max(MIN_SUBAGENT_LIMIT, min(MAX_SUBAGENT_LIMIT, value))
+def _clamp_subagent_limit(value: int, pool_size: int | None = None) -> int:
+    """Clamp subagent limit to the configured worker pool."""
+    effective_pool_size = pool_size if pool_size is not None else get_subagents_app_config().pool_size
+    return max(MIN_SUBAGENT_LIMIT, min(effective_pool_size, value))
 
 
 class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
@@ -30,12 +29,13 @@ class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
 
     Args:
         max_concurrent: Maximum number of concurrent subagent calls allowed.
-            Defaults to MAX_CONCURRENT_SUBAGENTS (3). Clamped to [2, 4].
+            Defaults to subagents.pool_size. Clamped to [1, subagents.pool_size].
     """
 
-    def __init__(self, max_concurrent: int = MAX_CONCURRENT_SUBAGENTS):
+    def __init__(self, max_concurrent: int | None = None):
         super().__init__()
-        self.max_concurrent = _clamp_subagent_limit(max_concurrent)
+        pool_size = get_subagents_app_config().pool_size
+        self.max_concurrent = _clamp_subagent_limit(max_concurrent if max_concurrent is not None else pool_size, pool_size)
 
     def _truncate_task_calls(self, state: AgentState) -> dict | None:
         messages = state.get("messages", [])

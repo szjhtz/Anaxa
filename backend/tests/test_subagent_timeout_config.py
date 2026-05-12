@@ -6,12 +6,13 @@ Covers:
 - load_subagents_config_from_dict() and get_subagents_app_config() singleton
 - registry.get_subagent_config() applies config overrides
 - registry.list_subagents() applies overrides for all agents
-- Polling timeout calculation in task_tool is consistent with config
+- Polling safety window in task_tool is consistent with config
 """
 
 import pytest
 
 from medrix_flow.config.subagents_config import (
+    MAX_SUBAGENT_POOL_SIZE,
     SubagentOverrideConfig,
     SubagentsAppConfig,
     get_subagents_app_config,
@@ -24,9 +25,9 @@ from medrix_flow.subagents.config import SubagentConfig
 # ---------------------------------------------------------------------------
 
 
-def _reset_subagents_config(timeout_seconds: int = 900, agents: dict | None = None) -> None:
+def _reset_subagents_config(timeout_seconds: int = 900, agents: dict | None = None, pool_size: int = 3) -> None:
     """Reset global subagents config to a known state."""
-    load_subagents_config_from_dict({"timeout_seconds": timeout_seconds, "agents": agents or {}})
+    load_subagents_config_from_dict({"pool_size": pool_size, "timeout_seconds": timeout_seconds, "agents": agents or {}})
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,10 @@ class TestSubagentsAppConfigDefaults:
         config = SubagentsAppConfig()
         assert config.timeout_seconds == 900
 
+    def test_default_pool_size(self):
+        config = SubagentsAppConfig()
+        assert config.pool_size == 3
+
     def test_default_agents_empty(self):
         config = SubagentsAppConfig()
         assert config.agents == {}
@@ -81,6 +86,18 @@ class TestSubagentsAppConfigDefaults:
     def test_rejects_negative_timeout(self):
         with pytest.raises(ValueError):
             SubagentsAppConfig(timeout_seconds=-60)
+
+    def test_custom_pool_size(self):
+        config = SubagentsAppConfig(pool_size=4)
+        assert config.pool_size == 4
+
+    def test_rejects_zero_pool_size(self):
+        with pytest.raises(ValueError):
+            SubagentsAppConfig(pool_size=0)
+
+    def test_rejects_too_large_pool_size(self):
+        with pytest.raises(ValueError):
+            SubagentsAppConfig(pool_size=MAX_SUBAGENT_POOL_SIZE + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +158,11 @@ class TestLoadSubagentsConfig:
     def test_load_global_timeout(self):
         load_subagents_config_from_dict({"timeout_seconds": 300})
         assert get_subagents_app_config().timeout_seconds == 300
+        assert get_subagents_app_config().pool_size == 3
+
+    def test_load_pool_size(self):
+        load_subagents_config_from_dict({"pool_size": 5, "timeout_seconds": 300})
+        assert get_subagents_app_config().pool_size == 5
 
     def test_load_with_per_agent_overrides(self):
         load_subagents_config_from_dict(
@@ -183,6 +205,18 @@ class TestLoadSubagentsConfig:
     def test_singleton_returns_same_instance_between_calls(self):
         load_subagents_config_from_dict({"timeout_seconds": 777})
         assert get_subagents_app_config() is get_subagents_app_config()
+
+
+class TestSubagentConcurrencyLimit:
+    def teardown_method(self):
+        _reset_subagents_config()
+
+    def test_limit_clamps_to_configured_pool_size(self):
+        from medrix_flow.agents.middlewares.subagent_limit_middleware import _clamp_subagent_limit
+
+        load_subagents_config_from_dict({"pool_size": 2})
+        assert _clamp_subagent_limit(5) == 2
+        assert _clamp_subagent_limit(0) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -313,12 +347,12 @@ class TestRegistryListSubagents:
 
 
 # ---------------------------------------------------------------------------
-# Polling timeout calculation (logic extracted from task_tool)
+# Polling safety window calculation
 # ---------------------------------------------------------------------------
 
 
 class TestPollingTimeoutCalculation:
-    """Verify the formula (timeout_seconds + 60) // 5 is correct for various inputs."""
+    """Verify the safety window (timeout_seconds + 60s) is correct for various inputs."""
 
     @pytest.mark.parametrize(
         "timeout_seconds, expected_max_polls",
@@ -337,7 +371,8 @@ class TestPollingTimeoutCalculation:
             system_prompt="test",
             timeout_seconds=timeout_seconds,
         )
-        max_poll_count = (dummy_config.timeout_seconds + 60) // 5
+        safety_window_seconds = dummy_config.timeout_seconds + 60
+        max_poll_count = safety_window_seconds // 5
         assert max_poll_count == expected_max_polls
 
     def test_polling_timeout_exceeds_execution_timeout(self):

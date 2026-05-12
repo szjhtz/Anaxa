@@ -358,6 +358,9 @@ sandbox:
 # Subagents are background workers delegated tasks by the lead agent
 
 # subagents:
+#   # Maximum concurrent subagent workers (default: 3, valid range: 1-16)
+#   pool_size: 3
+#
 #   # Default timeout in seconds for all subagents (default: 900 = 15 minutes)
 #   timeout_seconds: 900
 #

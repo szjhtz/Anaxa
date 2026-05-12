@@ -85,6 +85,14 @@ class TestDeferredToolRegistry:
         assert "github_create_issue" in names
         assert "slack_send_message" in names
 
+    def test_entries_returns_immutable_snapshot(self, registry):
+        snapshot = registry.entries
+        registry.register(_make_mock_tool("new_tool", "New tool"))
+
+        assert isinstance(snapshot, tuple)
+        assert "new_tool" not in {entry.name for entry in snapshot}
+        assert "new_tool" in {entry.name for entry in registry.entries}
+
     def test_search_select_single(self, registry):
         results = registry.search("select:github_create_issue")
         assert len(results) == 1

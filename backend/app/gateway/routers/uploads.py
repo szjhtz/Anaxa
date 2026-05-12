@@ -15,12 +15,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads/{thread_id}/uploads", tags=["uploads"])
 
 
+class UploadedFileInfo(BaseModel):
+    """Metadata for an uploaded file."""
+
+    filename: str
+    size: int
+    path: str
+    virtual_path: str
+    artifact_url: str
+    extension: str | None = None
+    modified: float | None = None
+    markdown_file: str | None = None
+    markdown_path: str | None = None
+    markdown_virtual_path: str | None = None
+    markdown_artifact_url: str | None = None
+
+
 class UploadResponse(BaseModel):
     """Response model for file upload."""
 
     success: bool
-    files: list[dict[str, str]]
+    files: list[UploadedFileInfo]
     message: str
+
+
+class ListUploadsResponse(BaseModel):
+    """Response model for listing uploaded files."""
+
+    files: list[UploadedFileInfo]
+    count: int
 
 
 def get_uploads_dir(thread_id: str) -> Path:
@@ -37,7 +60,7 @@ def get_uploads_dir(thread_id: str) -> Path:
     return base_dir
 
 
-@router.post("", response_model=UploadResponse)
+@router.post("", response_model=UploadResponse, response_model_exclude_none=True)
 async def upload_files(
     thread_id: str,
     files: list[UploadFile] = File(...),
@@ -91,7 +114,7 @@ async def upload_files(
 
             file_info = {
                 "filename": safe_filename,
-                "size": str(len(content)),
+                "size": len(content),
                 "path": relative_path,  # Actual filesystem path (relative to backend/)
                 "virtual_path": virtual_path,  # Path for Agent in sandbox
                 "artifact_url": f"/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/{safe_filename}",  # HTTP URL
@@ -128,8 +151,8 @@ async def upload_files(
     )
 
 
-@router.get("/list", response_model=dict)
-async def list_uploaded_files(thread_id: str) -> dict:
+@router.get("/list", response_model=ListUploadsResponse, response_model_exclude_none=True)
+async def list_uploaded_files(thread_id: str) -> ListUploadsResponse:
     """List all files in a thread's uploads directory.
 
     Args:
@@ -141,7 +164,7 @@ async def list_uploaded_files(thread_id: str) -> dict:
     uploads_dir = get_uploads_dir(thread_id)
 
     if not uploads_dir.exists():
-        return {"files": [], "count": 0}
+        return ListUploadsResponse(files=[], count=0)
 
     files = []
     for file_path in sorted(uploads_dir.iterdir()):
@@ -160,7 +183,7 @@ async def list_uploaded_files(thread_id: str) -> dict:
                 }
             )
 
-    return {"files": files, "count": len(files)}
+    return ListUploadsResponse(files=files, count=len(files))
 
 
 @router.delete("/{filename}")

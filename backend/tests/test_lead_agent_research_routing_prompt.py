@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from medrix_flow.agents.lead_agent import prompt as prompt_module
+from medrix_flow.skills.types import Skill
 
 
 def test_apply_prompt_template_includes_research_routing_guidance(monkeypatch):
@@ -25,6 +28,32 @@ def test_apply_prompt_template_includes_research_routing_guidance(monkeypatch):
     assert "final_release" in rendered
     assert "academic-researcher" in rendered
     assert "experiment_lab" in rendered
+
+
+def test_apply_prompt_template_includes_empirical_guidance_when_skill_available(monkeypatch, tmp_path):
+    monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, thread_id=None: "")
+    monkeypatch.setattr(prompt_module, "get_agent_soul", lambda agent_name: "")
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda available_skills=None: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda: "")
+    monkeypatch.setattr(
+        prompt_module,
+        "load_skills",
+        lambda enabled_only=True: [
+            Skill(
+                name="empirical-research-methods",
+                description="Empirical methods",
+                license=None,
+                skill_dir=tmp_path / "public" / "empirical-research-methods",
+                skill_file=tmp_path / "public" / "empirical-research-methods" / "SKILL.md",
+                relative_path=Path("empirical-research-methods"),
+                category="public",
+                enabled=True,
+            )
+        ],
+    )
+
+    rendered = prompt_module.apply_prompt_template()
+
     assert "empirical-research-methods" in rendered
     assert "DID" in rendered
 

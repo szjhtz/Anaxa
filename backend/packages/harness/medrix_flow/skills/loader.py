@@ -1,8 +1,11 @@
+import logging
 import os
 from pathlib import Path
 
 from .parser import parse_skill_file
 from .types import Skill
+
+logger = logging.getLogger(__name__)
 
 
 def get_skills_root_path() -> Path:
@@ -119,7 +122,7 @@ def load_skills(skills_path: Path | None = None, use_config: bool = True, enable
             return [skill for skill in cached if skill.enabled]
         return list(cached)
 
-    skills = []
+    discovered_skills = []
 
     # Scan public and custom directories
     for category in ["public", "custom"]:
@@ -138,7 +141,21 @@ def load_skills(skills_path: Path | None = None, use_config: bool = True, enable
 
             skill = parse_skill_file(skill_file, category=category, relative_path=relative_path)
             if skill:
-                skills.append(skill)
+                discovered_skills.append(skill)
+
+    skills_by_name: dict[str, Skill] = {}
+    for skill in discovered_skills:
+        existing = skills_by_name.get(skill.name)
+        if existing is None:
+            skills_by_name[skill.name] = skill
+            continue
+        if str(skill.category) == "custom" and str(existing.category) == "public":
+            logger.warning("Custom skill '%s' overrides public skill at %s", skill.name, existing.skill_file)
+            skills_by_name[skill.name] = skill
+        else:
+            logger.warning("Ignoring duplicate skill '%s' at %s; using %s", skill.name, skill.skill_file, existing.skill_file)
+
+    skills = list(skills_by_name.values())
 
     # Load skills state configuration and update enabled status
     # NOTE: We use ExtensionsConfig.from_file() instead of get_extensions_config()
@@ -153,7 +170,7 @@ def load_skills(skills_path: Path | None = None, use_config: bool = True, enable
             skill.enabled = extensions_config.is_skill_enabled(skill.name, skill.category)
     except Exception as e:
         # If config loading fails, default to all enabled
-        print(f"Warning: Failed to load extensions config: {e}")
+        logger.warning("Failed to load extensions config; defaulting skills to enabled: %s", e)
 
     # Sort by name for consistent ordering
     skills.sort(key=lambda s: s.name)

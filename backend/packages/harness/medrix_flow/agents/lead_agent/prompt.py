@@ -365,15 +365,7 @@ When the user prompt is about 科研、论文、文献、引用、参考文献�
   literature, DOI, baselines, leaderboard, benchmark, license, and dataset-version
   facts still require real evidence and must not be fabricated.
 - Use `matlab_execution` only for trusted local MATLAB CLI work when MATLAB must run via `matlab -batch`. It does not control the MATLAB GUI and requires local host bash to be explicitly enabled.
-- For empirical social-science, applied economics, public policy, education, finance,
-  management, sociology, psychology, epidemiology, or public-health data studies, load
-  `/mnt/skills/public/empirical-research-methods/SKILL.md` before planning. This is
-  mandatory for DID, staggered DID, IV, RDD, PSM/IPW, synthetic control, DML,
-  causal forest, target-trial emulation, TMLE, survival, event-study, Table 1,
-  robustness, heterogeneity, mechanism, or replication-package requests. Route
-  execution through `experiment_lab` with explicit empirical metadata, and route
-  lifecycle/gate tracking through `research_assistant` when the user asks for an
-  automatic research assistant or manuscript lifecycle.
+{empirical_research_methods_guidance}
 - Do not create a staged research quest merely because the user says "研究一下", "科研", "research", or asks for general background research. Route by intent and deliver the useful result in the current chat.
 - For manuscript-style deliverables (论文、综述成稿、experiment paper, manuscript, paper draft), default to a LaTeX bundle: `manuscript.tex`, `references.bib`, `citation_audit.json`, and `manuscript.pdf`.
 - For final manuscript delivery, prefer `manuscript_export` over manually chaining `write_file`,
@@ -587,6 +579,37 @@ def get_skills_prompt_section(available_skills: set[str] | None = None) -> str:
     return _render_skills_prompt_section(container_base_path, skill_items)
 
 
+def get_empirical_research_methods_guidance(available_skills: set[str] | None = None) -> str:
+    """Return empirical-methods routing guidance only when the skill is available."""
+    skills = load_skills(enabled_only=True)
+    if available_skills is not None:
+        skills = [skill for skill in skills if skill.name in available_skills]
+
+    try:
+        from medrix_flow.config import get_app_config
+
+        container_base_path = get_app_config().skills.container_path
+    except Exception:
+        container_base_path = "/mnt/skills"
+
+    skill = next((item for item in skills if item.name == "empirical-research-methods"), None)
+    if skill is None:
+        return ""
+
+    skill_path = skill.get_container_file_path(container_base_path)
+    return (
+        "- For empirical social-science, applied economics, public policy, education, finance,\n"
+        "  management, sociology, psychology, epidemiology, or public-health data studies, load\n"
+        f"  `{skill_path}` before planning. This is mandatory for DID, staggered DID, IV,\n"
+        "  RDD, PSM/IPW, synthetic control, DML, causal forest, target-trial emulation,\n"
+        "  TMLE, survival, event-study, Table 1, robustness, heterogeneity, mechanism,\n"
+        "  or replication-package requests. Route execution through `experiment_lab` with\n"
+        "  explicit empirical metadata, and route lifecycle/gate tracking through\n"
+        "  `research_assistant` when the user asks for an automatic research assistant or\n"
+        "  manuscript lifecycle."
+    )
+
+
 def get_agent_soul(agent_name: str | None) -> str:
     # Append SOUL.md (agent personality) if present
     soul = load_agent_soul(agent_name)
@@ -723,6 +746,7 @@ def apply_prompt_template(
         agent_name=agent_name or "MedrixFlow 2.0",
         soul=get_agent_soul(agent_name),
         skills_section=skills_section,
+        empirical_research_methods_guidance=get_empirical_research_methods_guidance(available_skills),
         deferred_tools_section=deferred_tools_section,
         memory_context=memory_context,
         synthetic_section=get_synthetic_data_mode_prompt() if synthetic_data_mode else "",

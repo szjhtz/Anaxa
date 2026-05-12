@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from medrix_flow.agents.thread_state import SandboxState, ThreadDataState, ThreadState
+from medrix_flow.config.subagents_config import DEFAULT_SUBAGENT_POOL_SIZE, get_subagents_app_config
 from medrix_flow.models import create_chat_model
 from medrix_flow.subagents.config import SubagentConfig
 
@@ -67,12 +68,80 @@ class SubagentResult:
 _background_tasks: dict[str, SubagentResult] = {}
 _background_tasks_lock = threading.Lock()
 
-# Thread pool for background task scheduling and orchestration
-_scheduler_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="subagent-scheduler-")
+_TERMINAL_STATUSES = {
+    SubagentStatus.COMPLETED,
+    SubagentStatus.FAILED,
+    SubagentStatus.TIMED_OUT,
+}
 
-# Thread pool for actual subagent execution (with timeout support)
-# Larger pool to avoid blocking when scheduler submits execution tasks
-_execution_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="subagent-exec-")
+# Thread pools are sized from subagents.pool_size. They are created lazily so
+# config.yaml can be loaded before the first subagent run.
+_pools_lock = threading.Lock()
+_pool_size: int | None = None
+_scheduler_pool: ThreadPoolExecutor | None = None
+_execution_pool: ThreadPoolExecutor | None = None
+
+MAX_CONCURRENT_SUBAGENTS = DEFAULT_SUBAGENT_POOL_SIZE
+
+
+def get_configured_subagent_pool_size() -> int:
+    """Return the configured subagent worker pool size."""
+    return get_subagents_app_config().pool_size
+
+
+def _get_thread_pools() -> tuple[ThreadPoolExecutor, ThreadPoolExecutor]:
+    """Get scheduler/execution pools aligned to the configured pool size."""
+    global _execution_pool, _pool_size, _scheduler_pool
+
+    configured_size = get_configured_subagent_pool_size()
+    with _pools_lock:
+        if _scheduler_pool is not None and _execution_pool is not None and _pool_size == configured_size:
+            return _scheduler_pool, _execution_pool
+
+        old_scheduler = _scheduler_pool
+        old_execution = _execution_pool
+        _scheduler_pool = ThreadPoolExecutor(max_workers=configured_size, thread_name_prefix="subagent-scheduler-")
+        _execution_pool = ThreadPoolExecutor(max_workers=configured_size, thread_name_prefix="subagent-exec-")
+        _pool_size = configured_size
+
+        if old_scheduler is not None:
+            old_scheduler.shutdown(wait=False, cancel_futures=False)
+        if old_execution is not None:
+            old_execution.shutdown(wait=False, cancel_futures=False)
+
+        logger.info("Subagent thread pools initialized with pool_size=%s", configured_size)
+        return _scheduler_pool, _execution_pool
+
+
+def _set_terminal_result(
+    result: SubagentResult,
+    status: SubagentStatus,
+    *,
+    output: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Set a terminal state without overwriting an existing timeout."""
+    with _background_tasks_lock:
+        if result.status == SubagentStatus.TIMED_OUT:
+            return
+        result.status = status
+        result.result = output
+        result.error = error
+        result.completed_at = datetime.now()
+
+
+def mark_background_task_timed_out(task_id: str, error: str) -> SubagentResult | None:
+    """Mark a background task timed out unless it already reached a terminal state."""
+    with _background_tasks_lock:
+        result = _background_tasks.get(task_id)
+        if result is None:
+            return None
+        if result.status in _TERMINAL_STATUSES:
+            return result
+        result.status = SubagentStatus.TIMED_OUT
+        result.error = error
+        result.completed_at = datetime.now()
+        return result
 
 
 def _filter_tools(
@@ -262,10 +331,20 @@ class SubagentExecutor:
                             is_duplicate = message_dict in result.ai_messages
 
                         if not is_duplicate:
-                            result.ai_messages.append(message_dict)
+                            if result_holder is not None:
+                                with _background_tasks_lock:
+                                    if result.status not in _TERMINAL_STATUSES:
+                                        result.ai_messages.append(message_dict)
+                            else:
+                                result.ai_messages.append(message_dict)
                             logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} captured AI message #{len(result.ai_messages)}")
 
             logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} completed async execution")
+
+            if result_holder is not None:
+                with _background_tasks_lock:
+                    if result.status == SubagentStatus.TIMED_OUT:
+                        return result
 
             if final_state is None:
                 logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no final state")
@@ -337,14 +416,20 @@ class SubagentExecutor:
                     logger.warning(f"[trace={self.trace_id}] Subagent {self.config.name} no messages in final state")
                     result.result = "No response generated"
 
-            result.status = SubagentStatus.COMPLETED
-            result.completed_at = datetime.now()
+            if result_holder is not None:
+                _set_terminal_result(result, SubagentStatus.COMPLETED, output=result.result)
+            else:
+                result.status = SubagentStatus.COMPLETED
+                result.completed_at = datetime.now()
 
         except Exception as e:
             logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} async execution failed")
-            result.status = SubagentStatus.FAILED
-            result.error = str(e)
-            result.completed_at = datetime.now()
+            if result_holder is not None:
+                _set_terminal_result(result, SubagentStatus.FAILED, error=str(e))
+            else:
+                result.status = SubagentStatus.FAILED
+                result.error = str(e)
+                result.completed_at = datetime.now()
 
         return result
 
@@ -383,9 +468,12 @@ class SubagentExecutor:
                     trace_id=self.trace_id,
                     status=SubagentStatus.FAILED,
                 )
-            result.status = SubagentStatus.FAILED
-            result.error = str(e)
-            result.completed_at = datetime.now()
+            if result_holder is not None:
+                _set_terminal_result(result, SubagentStatus.FAILED, error=str(e))
+            else:
+                result.status = SubagentStatus.FAILED
+                result.error = str(e)
+                result.completed_at = datetime.now()
             return result
 
     def execute_async(self, task: str, task_id: str | None = None) -> str:
@@ -414,46 +502,62 @@ class SubagentExecutor:
         with _background_tasks_lock:
             _background_tasks[task_id] = result
 
-        # Submit to scheduler pool
+        scheduler_pool, execution_pool = _get_thread_pools()
+
+        # Submit to scheduler pool. The scheduler may queue when the pool is
+        # saturated; the execution timeout starts only after the execution
+        # worker marks the task RUNNING.
         def run_task():
-            with _background_tasks_lock:
-                _background_tasks[task_id].status = SubagentStatus.RUNNING
-                _background_tasks[task_id].started_at = datetime.now()
-                result_holder = _background_tasks[task_id]
+            result_holder = result
 
             try:
+                def execute_started_task() -> SubagentResult:
+                    nonlocal result_holder
+
+                    with _background_tasks_lock:
+                        current = _background_tasks.get(task_id)
+                        if current is None:
+                            return result_holder
+                        if current.status in _TERMINAL_STATUSES:
+                            return current
+                        current.status = SubagentStatus.RUNNING
+                        current.started_at = datetime.now()
+                        result_holder = current
+
+                    return self.execute(task, result_holder)
+
                 # Submit execution to execution pool with timeout
                 # Pass result_holder so execute() can update it in real-time
-                execution_future: Future = _execution_pool.submit(self.execute, task, result_holder)
+                execution_future: Future = execution_pool.submit(execute_started_task)
                 try:
                     # Wait for execution with timeout
                     exec_result = execution_future.result(timeout=self.config.timeout_seconds)
                     with _background_tasks_lock:
-                        _background_tasks[task_id].status = exec_result.status
-                        _background_tasks[task_id].result = exec_result.result
-                        _background_tasks[task_id].error = exec_result.error
-                        _background_tasks[task_id].completed_at = datetime.now()
-                        _background_tasks[task_id].ai_messages = exec_result.ai_messages
+                        current = _background_tasks.get(task_id)
+                        if current is None or current.status == SubagentStatus.TIMED_OUT:
+                            return
+                        current.status = exec_result.status
+                        current.result = exec_result.result
+                        current.error = exec_result.error
+                        current.completed_at = exec_result.completed_at or datetime.now()
+                        current.ai_messages = exec_result.ai_messages
                 except FuturesTimeoutError:
                     logger.error(f"[trace={self.trace_id}] Subagent {self.config.name} execution timed out after {self.config.timeout_seconds}s")
-                    with _background_tasks_lock:
-                        _background_tasks[task_id].status = SubagentStatus.TIMED_OUT
-                        _background_tasks[task_id].error = f"Execution timed out after {self.config.timeout_seconds} seconds"
-                        _background_tasks[task_id].completed_at = datetime.now()
+                    mark_background_task_timed_out(task_id, f"Execution timed out after {self.config.timeout_seconds} seconds")
                     # Cancel the future (best effort - may not stop the actual execution)
                     execution_future.cancel()
             except Exception as e:
                 logger.exception(f"[trace={self.trace_id}] Subagent {self.config.name} async execution failed")
                 with _background_tasks_lock:
-                    _background_tasks[task_id].status = SubagentStatus.FAILED
-                    _background_tasks[task_id].error = str(e)
-                    _background_tasks[task_id].completed_at = datetime.now()
+                    current = _background_tasks.get(task_id)
+                    if current is None or current.status == SubagentStatus.TIMED_OUT:
+                        return
+                    current.status = SubagentStatus.FAILED
+                    current.error = str(e)
+                    current.completed_at = datetime.now()
 
-        _scheduler_pool.submit(run_task)
+        scheduler_pool.submit(run_task)
         return task_id
-
-
-MAX_CONCURRENT_SUBAGENTS = 3
 
 
 def get_background_task_result(task_id: str) -> SubagentResult | None:

@@ -1,8 +1,10 @@
 """Cache for MCP tools to avoid repeated loading."""
 
 import asyncio
+import hashlib
 import logging
-import os
+from dataclasses import dataclass
+from pathlib import Path
 
 from langchain_core.tools import BaseTool
 
@@ -11,20 +13,36 @@ logger = logging.getLogger(__name__)
 _mcp_tools_cache: list[BaseTool] | None = None
 _cache_initialized = False
 _initialization_lock = asyncio.Lock()
-_config_mtime: float | None = None  # Track config file modification time
+_config_signature: "ConfigSignature | None" = None
 
 
-def _get_config_mtime() -> float | None:
-    """Get the modification time of the extensions config file.
+@dataclass(frozen=True)
+class ConfigSignature:
+    """Stable signature for detecting config changes."""
+
+    mtime_ns: int
+    size: int
+    content_hash: str
+
+
+def _get_config_signature() -> ConfigSignature | None:
+    """Get a robust signature for the extensions config file.
 
     Returns:
-        The modification time as a float, or None if the file doesn't exist.
+        Signature with mtime_ns, size, and content hash, or None if missing.
     """
     from medrix_flow.config.extensions_config import ExtensionsConfig
 
     config_path = ExtensionsConfig.resolve_config_path()
     if config_path and config_path.exists():
-        return os.path.getmtime(config_path)
+        path = Path(config_path)
+        stat = path.stat()
+        content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        return ConfigSignature(
+            mtime_ns=stat.st_mtime_ns,
+            size=stat.st_size,
+            content_hash=content_hash,
+        )
     return None
 
 
@@ -34,20 +52,19 @@ def _is_cache_stale() -> bool:
     Returns:
         True if the cache should be invalidated, False otherwise.
     """
-    global _config_mtime
+    global _config_signature
 
     if not _cache_initialized:
         return False  # Not initialized yet, not stale
 
-    current_mtime = _get_config_mtime()
+    current_signature = _get_config_signature()
 
-    # If we couldn't get mtime before or now, assume not stale
-    if _config_mtime is None or current_mtime is None:
+    # If we couldn't get a signature before or now, assume not stale
+    if _config_signature is None or current_signature is None:
         return False
 
-    # If the config file has been modified since we cached, it's stale
-    if current_mtime > _config_mtime:
-        logger.info(f"MCP config file has been modified (mtime: {_config_mtime} -> {current_mtime}), cache is stale")
+    if current_signature != _config_signature:
+        logger.info("MCP config file signature changed (%s -> %s), cache is stale", _config_signature, current_signature)
         return True
 
     return False
@@ -61,7 +78,7 @@ async def initialize_mcp_tools() -> list[BaseTool]:
     Returns:
         List of LangChain tools from all enabled MCP servers.
     """
-    global _mcp_tools_cache, _cache_initialized, _config_mtime
+    global _mcp_tools_cache, _cache_initialized, _config_signature
 
     async with _initialization_lock:
         if _cache_initialized:
@@ -73,8 +90,8 @@ async def initialize_mcp_tools() -> list[BaseTool]:
         logger.info("Initializing MCP tools...")
         _mcp_tools_cache = await get_mcp_tools()
         _cache_initialized = True
-        _config_mtime = _get_config_mtime()  # Record config file mtime
-        logger.info(f"MCP tools initialized: {len(_mcp_tools_cache)} tool(s) loaded (config mtime: {_config_mtime})")
+        _config_signature = _get_config_signature()
+        logger.info("MCP tools initialized: %s tool(s) loaded (config signature: %s)", len(_mcp_tools_cache), _config_signature)
 
         return _mcp_tools_cache
 
@@ -131,8 +148,8 @@ def reset_mcp_tools_cache() -> None:
 
     This is useful for testing or when you want to reload MCP tools.
     """
-    global _mcp_tools_cache, _cache_initialized, _config_mtime
+    global _mcp_tools_cache, _cache_initialized, _config_signature
     _mcp_tools_cache = None
     _cache_initialized = False
-    _config_mtime = None
+    _config_signature = None
     logger.info("MCP tools cache reset")

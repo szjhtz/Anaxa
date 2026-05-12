@@ -26,7 +26,8 @@ def test_upload_files_writes_thread_storage_and_skips_local_sandbox_sync(tmp_pat
 
     assert result.success is True
     assert len(result.files) == 1
-    assert result.files[0]["filename"] == "notes.txt"
+    assert result.files[0].filename == "notes.txt"
+    assert result.files[0].size == len(b"hello uploads")
     assert (thread_uploads_dir / "notes.txt").read_bytes() == b"hello uploads"
 
     sandbox.update_file.assert_not_called()
@@ -57,8 +58,9 @@ def test_upload_files_syncs_non_local_sandbox_and_marks_markdown_file(tmp_path):
     assert result.success is True
     assert len(result.files) == 1
     file_info = result.files[0]
-    assert file_info["filename"] == "report.pdf"
-    assert file_info["markdown_file"] == "report.md"
+    assert file_info.filename == "report.pdf"
+    assert file_info.size == len(b"pdf-bytes")
+    assert file_info.markdown_file == "report.md"
 
     assert (thread_uploads_dir / "report.pdf").read_bytes() == b"pdf-bytes"
     assert (thread_uploads_dir / "report.md").read_text(encoding="utf-8") == "converted"
@@ -92,10 +94,23 @@ def test_upload_files_rejects_dotdot_and_dot_filenames(tmp_path):
         result = asyncio.run(uploads.upload_files("thread-local", files=[file]))
         assert result.success is True
         assert len(result.files) == 1
-        assert result.files[0]["filename"] == "passwd"
+        assert result.files[0].filename == "passwd"
 
     # Only the safely normalised file should exist
     assert [f.name for f in thread_uploads_dir.iterdir()] == ["passwd"]
+
+
+def test_list_uploaded_files_reports_numeric_size(tmp_path):
+    thread_uploads_dir = tmp_path / "uploads"
+    thread_uploads_dir.mkdir(parents=True)
+    (thread_uploads_dir / "notes.txt").write_bytes(b"hello")
+
+    with patch.object(uploads, "get_uploads_dir", return_value=thread_uploads_dir):
+        result = asyncio.run(uploads.list_uploaded_files("thread-local"))
+
+    assert result.count == 1
+    assert result.files[0].filename == "notes.txt"
+    assert result.files[0].size == 5
 
 
 def test_delete_uploaded_file_removes_generated_markdown_companion(tmp_path):

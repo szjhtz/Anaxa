@@ -1,5 +1,7 @@
 """Core behavior tests for MCP client server config building."""
 
+import os
+
 import pytest
 
 from medrix_flow.config.extensions_config import ExtensionsConfig, McpServerConfig
@@ -106,3 +108,35 @@ def test_build_servers_config_skips_invalid_server_and_keeps_valid_ones():
     assert result["valid-stdio"]["transport"] == "stdio"
     assert "invalid-stdio" not in result
     assert "disabled-http" not in result
+
+
+def test_mcp_cache_detects_same_mtime_same_size_content_change(monkeypatch, tmp_path):
+    import medrix_flow.mcp.cache as cache
+
+    config_path = tmp_path / "extensions_config.json"
+    config_path.write_text("alpha", encoding="utf-8")
+    monkeypatch.setattr(
+        ExtensionsConfig,
+        "resolve_config_path",
+        classmethod(lambda cls, config_path=None: config_path or tmp_path / "extensions_config.json"),
+    )
+
+    cache.reset_mcp_tools_cache()
+    first_signature = cache._get_config_signature()
+    assert first_signature is not None
+
+    config_path.write_text("bravo", encoding="utf-8")
+    os.utime(config_path, ns=(first_signature.mtime_ns, first_signature.mtime_ns))
+
+    second_signature = cache._get_config_signature()
+    assert second_signature is not None
+    assert second_signature.mtime_ns == first_signature.mtime_ns
+    assert second_signature.size == first_signature.size
+    assert second_signature.content_hash != first_signature.content_hash
+
+    cache._cache_initialized = True
+    cache._config_signature = first_signature
+    try:
+        assert cache._is_cache_stale() is True
+    finally:
+        cache.reset_mcp_tools_cache()

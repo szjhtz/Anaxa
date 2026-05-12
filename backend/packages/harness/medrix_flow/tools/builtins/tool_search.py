@@ -13,6 +13,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any
 
 from langchain.tools import BaseTool
@@ -27,7 +28,7 @@ MAX_RESULTS = 5  # Max tools returned per search
 # ── Registry ──
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeferredToolEntry:
     """Lightweight metadata for a deferred tool (no full schema in context)."""
 
@@ -41,15 +42,17 @@ class DeferredToolRegistry:
 
     def __init__(self):
         self._entries: list[DeferredToolEntry] = []
+        self._lock = RLock()
 
     def register(self, tool: BaseTool) -> None:
-        self._entries.append(
-            DeferredToolEntry(
-                name=tool.name,
-                description=tool.description or "",
-                tool=tool,
+        with self._lock:
+            self._entries.append(
+                DeferredToolEntry(
+                    name=tool.name,
+                    description=tool.description or "",
+                    tool=tool,
+                )
             )
-        )
 
     def search(self, query: str) -> list[BaseTool]:
         """Search deferred tools by regex pattern against name + description.
@@ -62,14 +65,15 @@ class DeferredToolRegistry:
         Returns:
             List of matched BaseTool objects (up to MAX_RESULTS).
         """
+        entries = self.entries
         if query.startswith("select:"):
             names = {n.strip() for n in query[7:].split(",")}
-            return [e.tool for e in self._entries if e.name in names][:MAX_RESULTS]
+            return [e.tool for e in entries if e.name in names][:MAX_RESULTS]
 
         if query.startswith("+"):
             parts = query[1:].split(None, 1)
             required = parts[0].lower()
-            candidates = [e for e in self._entries if required in e.name.lower()]
+            candidates = [e for e in entries if required in e.name.lower()]
             if len(parts) > 1:
                 candidates.sort(
                     key=lambda e: _regex_score(parts[1], e),
@@ -84,7 +88,7 @@ class DeferredToolRegistry:
             regex = re.compile(re.escape(query), re.IGNORECASE)
 
         scored = []
-        for entry in self._entries:
+        for entry in entries:
             searchable = f"{entry.name} {entry.description}"
             if regex.search(searchable):
                 score = 2 if regex.search(entry.name) else 1
@@ -94,11 +98,13 @@ class DeferredToolRegistry:
         return [entry.tool for _, entry in scored][:MAX_RESULTS]
 
     @property
-    def entries(self) -> list[DeferredToolEntry]:
-        return list(self._entries)
+    def entries(self) -> tuple[DeferredToolEntry, ...]:
+        with self._lock:
+            return tuple(self._entries)
 
     def __len__(self) -> int:
-        return len(self._entries)
+        with self._lock:
+            return len(self._entries)
 
 
 def _regex_score(pattern: str, entry: DeferredToolEntry) -> int:
@@ -112,21 +118,25 @@ def _regex_score(pattern: str, entry: DeferredToolEntry) -> int:
 # ── Singleton ──
 
 _registry: DeferredToolRegistry | None = None
+_registry_lock = RLock()
 
 
 def get_deferred_registry() -> DeferredToolRegistry | None:
-    return _registry
+    with _registry_lock:
+        return _registry
 
 
 def set_deferred_registry(registry: DeferredToolRegistry) -> None:
     global _registry
-    _registry = registry
+    with _registry_lock:
+        _registry = registry
 
 
 def reset_deferred_registry() -> None:
     """Reset the deferred registry singleton. Useful for testing."""
     global _registry
-    _registry = None
+    with _registry_lock:
+        _registry = None
 
 
 def extract_selected_tool_names(payload: Any) -> set[str]:

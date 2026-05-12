@@ -609,3 +609,24 @@ def test_runs_router_and_feedback_end_to_end():
         assert delete_feedback.status_code == 204
 
     asyncio.run(db.close())
+
+
+def test_stream_run_response_sets_sse_no_transform_headers():
+    class FakeService:
+        async def start_run(self, thread_id, body):
+            return SimpleNamespace(run_id="run-stream-1")
+
+        async def sse_consumer(self, record, request):
+            yield "event: end\ndata: {}\n\n"
+
+    app = FastAPI()
+    app.state.run_service = FakeService()
+    app.include_router(runs.router)
+
+    with TestClient(app) as client:
+        response = client.post("/api/threads/thread-1/runs/stream", json={})
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache, no-transform"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.headers["content-location"] == "/api/threads/thread-1/runs/run-stream-1"

@@ -4,6 +4,7 @@ import logging
 import time
 import uuid
 from dataclasses import replace
+from datetime import datetime
 from typing import Annotated, Literal
 
 from langchain.tools import InjectedToolCallId, ToolRuntime, tool
@@ -13,7 +14,7 @@ from langgraph.typing import ContextT
 from medrix_flow.agents.lead_agent.prompt import get_skills_prompt_section
 from medrix_flow.agents.thread_state import ThreadState
 from medrix_flow.subagents import SubagentExecutor, get_subagent_config
-from medrix_flow.subagents.executor import SubagentStatus, cleanup_background_task, get_background_task_result
+from medrix_flow.subagents.executor import SubagentStatus, cleanup_background_task, get_background_task_result, mark_background_task_timed_out
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +95,11 @@ def task_tool(
         thread_data = runtime.state.get("thread_data")
         thread_id = runtime.context.get("thread_id")
 
-        # Try to get parent model from configurable
+        # Prefer runtime context because it reflects the current run. Metadata is
+        # retained as a fallback for older call paths.
+        parent_model = runtime.context.get("model_name") or runtime.context.get("model")
         metadata = runtime.config.get("metadata", {})
-        parent_model = metadata.get("model_name")
+        parent_model = parent_model or metadata.get("model_name")
 
         # Get or generate trace_id for distributed tracing
         trace_id = metadata.get("trace_id") or str(uuid.uuid4())[:8]
@@ -127,7 +130,7 @@ def task_tool(
     poll_count = 0
     last_status = None
     last_message_count = 0  # Track how many AI messages we've already sent
-    # Polling timeout: execution timeout + 60s buffer, checked every 5s
+    # Safety timeout: execution timeout + 60s buffer, counted from execution start.
     max_poll_count = (config.timeout_seconds + 60) // 5
 
     logger.info(f"[trace={trace_id}] Started background task {task_id} (subagent={subagent_type}, timeout={config.timeout_seconds}s, polling_limit={max_poll_count} polls)")
@@ -201,14 +204,22 @@ def task_tool(
         time.sleep(5)  # Poll every 5 seconds
         poll_count += 1
 
-        # Polling timeout as a safety net (in case thread pool timeout doesn't work)
-        # Set to execution timeout + 60s buffer, in 5s poll intervals
-        # This catches edge cases where the background task gets stuck
-        # Note: We don't call cleanup_background_task here because the task may
-        # still be running in the background. The cleanup will happen when the
-        # executor completes and sets a terminal status.
-        if poll_count > max_poll_count:
+        # Polling safety timeout as a backstop in case the scheduler timeout
+        # does not fire. Queue time is excluded because started_at is assigned
+        # by the execution worker.
+        if result.started_at is not None:
+            elapsed_seconds = (datetime.now() - result.started_at).total_seconds()
+        else:
+            elapsed_seconds = 0
+
+        if result.started_at is not None and elapsed_seconds > config.timeout_seconds + 60:
             timeout_minutes = config.timeout_seconds // 60
-            logger.error(f"[trace={trace_id}] Task {task_id} polling timed out after {poll_count} polls (should have been caught by thread pool timeout)")
-            writer({"type": "task_timed_out", "task_id": task_id})
+            error = f"Polling safety timeout after {timeout_minutes} minutes. This may indicate the background task is stuck."
+            logger.error(
+                f"[trace={trace_id}] Task {task_id} polling timed out after {elapsed_seconds:.1f}s of execution "
+                "(should have been caught by thread pool timeout)"
+            )
+            mark_background_task_timed_out(task_id, error)
+            writer({"type": "task_timed_out", "task_id": task_id, "error": error})
+            cleanup_background_task(task_id)
             return f"Task polling timed out after {timeout_minutes} minutes. This may indicate the background task is stuck. Status: {result.status.value}"

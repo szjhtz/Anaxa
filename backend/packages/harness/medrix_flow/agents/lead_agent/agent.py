@@ -20,6 +20,7 @@ from medrix_flow.agents.middlewares.visual_quality_middleware import VisualQuali
 from medrix_flow.agents.thread_state import ThreadState
 from medrix_flow.config.agents_config import load_agent_config
 from medrix_flow.config.app_config import get_app_config
+from medrix_flow.config.subagents_config import get_subagents_app_config
 from medrix_flow.config.summarization_config import get_summarization_config
 from medrix_flow.models import create_chat_model
 
@@ -270,7 +271,7 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     # Add SubagentLimitMiddleware to truncate excess parallel task calls
     subagent_enabled = config.get("configurable", {}).get("subagent_enabled", False)
     if subagent_enabled:
-        max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", 3)
+        max_concurrent_subagents = config.get("configurable", {}).get("max_concurrent_subagents", get_subagents_app_config().pool_size)
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
 
     # LoopDetectionMiddleware — detect and break repetitive tool call loops
@@ -314,7 +315,7 @@ def make_lead_agent(config: RunnableConfig):
     requested_model_name: str | None = cfg.get("model_name") or cfg.get("model")
     is_plan_mode = cfg.get("is_plan_mode", False)
     subagent_enabled = cfg.get("subagent_enabled", False)
-    max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
+    max_concurrent_subagents = cfg.get("max_concurrent_subagents", get_subagents_app_config().pool_size)
     is_bootstrap = cfg.get("is_bootstrap", False)
     visual_output_intent = bool(cfg.get("visual_output_intent", False)) and not is_bootstrap
     synthetic_data_mode = bool(cfg.get("synthetic_data_mode", False)) and not is_bootstrap

@@ -39,6 +39,7 @@ from medrix_flow.config.agents_config import AGENT_NAME_PATTERN
 from medrix_flow.config.app_config import get_app_config, reload_app_config
 from medrix_flow.config.extensions_config import ExtensionsConfig, get_extensions_config, reload_extensions_config
 from medrix_flow.config.paths import get_paths
+from medrix_flow.config.subagents_config import get_subagents_app_config
 from medrix_flow.models import create_chat_model
 from medrix_flow.skills.service import SkillService
 
@@ -227,7 +228,7 @@ class MedrixFlowClient:
         subagent_enabled = cfg.get("subagent_enabled", False)
         visual_output_intent = bool(cfg.get("visual_output_intent", False))
         synthetic_data_mode = bool(cfg.get("synthetic_data_mode", False))
-        max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
+        max_concurrent_subagents = cfg.get("max_concurrent_subagents", get_subagents_app_config().pool_size)
         thread_id = cfg.get("thread_id")
 
         kwargs: dict[str, Any] = {
@@ -820,7 +821,7 @@ class MedrixFlowClient:
 
                 info: dict[str, Any] = {
                     "filename": src_path.name,
-                    "size": str(dest.stat().st_size),
+                    "size": dest.stat().st_size,
                     "path": str(dest),
                     "virtual_path": f"/mnt/user-data/uploads/{src_path.name}",
                     "artifact_url": f"/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/{src_path.name}",
@@ -880,7 +881,7 @@ class MedrixFlowClient:
             files.append(
                 {
                     "filename": filename,
-                    "size": str(stat.st_size),
+                    "size": stat.st_size,
                     "path": str(Path(entry.path)),
                     "virtual_path": f"/mnt/user-data/uploads/{filename}",
                     "artifact_url": f"/api/threads/{thread_id}/artifacts/mnt/user-data/uploads/{filename}",

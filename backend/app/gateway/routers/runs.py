@@ -154,7 +154,7 @@ async def stream_run(thread_id: str, body: RunCreateRequest, request: Request) -
         service.sse_consumer(record, request),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Location": f"/api/threads/{thread_id}/runs/{record.run_id}",

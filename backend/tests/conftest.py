@@ -28,6 +28,8 @@ _executor_mock.SubagentExecutor = MagicMock
 _executor_mock.SubagentResult = MagicMock
 _executor_mock.SubagentStatus = MagicMock
 _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
+_executor_mock.get_configured_subagent_pool_size = MagicMock(return_value=3)
 _executor_mock.get_background_task_result = MagicMock()
+_executor_mock.mark_background_task_timed_out = MagicMock()
 
 sys.modules["medrix_flow.subagents.executor"] = _executor_mock

@@ -6,6 +6,7 @@ from pathlib import Path
 from medrix_flow.agents.lead_agent.prompt import clear_skills_system_prompt_cache, get_skills_prompt_section
 from medrix_flow.config.extensions_config import reset_extensions_config
 from medrix_flow.skills.loader import get_skills_root_path, invalidate_skills_cache, load_skills
+from medrix_flow.skills.types import Skill
 from medrix_flow.skills.validation import _validate_skill_frontmatter
 
 
@@ -70,6 +71,20 @@ def test_load_skills_skips_hidden_directories(tmp_path: Path):
     assert "secret-skill" not in names
 
 
+def test_custom_skill_overrides_public_skill_with_same_name(tmp_path: Path):
+    skills_root = tmp_path / "skills"
+
+    _write_skill(skills_root / "public" / "shared", "shared-skill", "Public version")
+    _write_skill(skills_root / "custom" / "shared", "shared-skill", "Custom version")
+
+    skills = load_skills(skills_path=skills_root, use_config=False, enabled_only=False)
+    matches = [skill for skill in skills if skill.name == "shared-skill"]
+
+    assert len(matches) == 1
+    assert matches[0].category == "custom"
+    assert matches[0].description == "Custom version"
+
+
 def test_all_public_skills_parse_and_follow_name_conventions():
     """Built-in skills should not fail silently at runtime."""
     public_root = get_skills_root_path() / "public"
@@ -106,6 +121,30 @@ def test_skills_prompt_contains_metadata_not_skill_bodies(monkeypatch):
     assert "# Bootstrap Soul" not in rendered
     assert "# Deep Research Skill" not in rendered
     assert "## Workflow" not in rendered
+
+
+def test_empirical_methods_guidance_uses_available_skill_path(monkeypatch, tmp_path: Path):
+    from medrix_flow.agents.lead_agent import prompt as prompt_module
+
+    skill = Skill(
+        name="empirical-research-methods",
+        description="Empirical methods",
+        license=None,
+        skill_dir=tmp_path / "custom" / "empirical-research-methods",
+        skill_file=tmp_path / "custom" / "empirical-research-methods" / "SKILL.md",
+        relative_path=Path("empirical-research-methods"),
+        category="custom",
+        enabled=True,
+    )
+    monkeypatch.setattr(prompt_module, "load_skills", lambda enabled_only=True: [skill])
+    monkeypatch.setattr(
+        "medrix_flow.config.get_app_config",
+        lambda: type("Config", (), {"skills": type("Skills", (), {"container_path": "/custom/skills"})()})(),
+    )
+
+    rendered = prompt_module.get_empirical_research_methods_guidance()
+    assert "/custom/skills/custom/empirical-research-methods/SKILL.md" in rendered
+    assert prompt_module.get_empirical_research_methods_guidance({"bootstrap"}) == ""
 
 
 def test_legacy_skill_key_controls_renamed_skill(monkeypatch, tmp_path: Path) -> None:

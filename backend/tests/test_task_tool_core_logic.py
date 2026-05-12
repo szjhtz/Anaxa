@@ -1,6 +1,7 @@
 """Core behavior tests for task tool orchestration."""
 
 import importlib
+from datetime import datetime, timedelta
 from enum import Enum
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -52,12 +53,14 @@ def _make_result(
     ai_messages: list[dict] | None = None,
     result: str | None = None,
     error: str | None = None,
+    started_at: datetime | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         status=status,
         ai_messages=ai_messages or [],
         result=result,
         error=error,
+        started_at=started_at,
     )
 
 
@@ -78,6 +81,7 @@ def test_task_tool_returns_error_for_unknown_subagent(monkeypatch):
 def test_task_tool_emits_running_and_completed_events(monkeypatch):
     config = _make_subagent_config()
     runtime = _make_runtime()
+    runtime.context["model_name"] = "context-model"
     events = []
     captured = {}
     get_available_tools = MagicMock(return_value=["tool-a", "tool-b"])
@@ -126,11 +130,11 @@ def test_task_tool_emits_running_and_completed_events(monkeypatch):
     assert captured["prompt"] == "collect diagnostics"
     assert captured["task_id"] == "tc-123"
     assert captured["executor_kwargs"]["thread_id"] == "thread-1"
-    assert captured["executor_kwargs"]["parent_model"] == "ark-model"
+    assert captured["executor_kwargs"]["parent_model"] == "context-model"
     assert captured["executor_kwargs"]["config"].max_turns == 7
     assert "Skills Appendix" in captured["executor_kwargs"]["config"].system_prompt
 
-    get_available_tools.assert_called_once_with(model_name="ark-model", subagent_enabled=False)
+    get_available_tools.assert_called_once_with(model_name="context-model", subagent_enabled=False)
 
     event_types = [e["type"] for e in events]
     assert event_types == ["task_started", "task_running", "task_running", "task_completed"]
@@ -222,7 +226,7 @@ def test_task_tool_polling_safety_timeout(monkeypatch):
     monkeypatch.setattr(
         task_tool_module,
         "get_background_task_result",
-        lambda _: _make_result(FakeSubagentStatus.RUNNING, ai_messages=[]),
+        lambda _: _make_result(FakeSubagentStatus.RUNNING, ai_messages=[], started_at=datetime.now() - timedelta(seconds=62)),
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.time, "sleep", lambda _: None)
@@ -361,18 +365,14 @@ def test_cleanup_called_on_timed_out(monkeypatch):
     assert cleanup_calls == ["tc-cleanup-timedout"]
 
 
-def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
-    """Verify cleanup_background_task is NOT called on polling safety timeout.
-
-    This prevents race conditions where the background task is still running
-    but the polling loop gives up. The cleanup should happen later when the
-    executor completes and sets a terminal status.
-    """
+def test_cleanup_called_on_polling_safety_timeout_after_marking_timeout(monkeypatch):
+    """Polling safety timeout marks the task terminal before cleanup."""
     config = _make_subagent_config()
     # Keep max_poll_count small for test speed: (1 + 60) // 5 = 12
     config.timeout_seconds = 1
     events = []
     cleanup_calls = []
+    timeout_marks = []
 
     monkeypatch.setattr(task_tool_module, "SubagentStatus", FakeSubagentStatus)
     monkeypatch.setattr(
@@ -385,7 +385,7 @@ def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
     monkeypatch.setattr(
         task_tool_module,
         "get_background_task_result",
-        lambda _: _make_result(FakeSubagentStatus.RUNNING, ai_messages=[]),
+        lambda _: _make_result(FakeSubagentStatus.RUNNING, ai_messages=[], started_at=datetime.now() - timedelta(seconds=62)),
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
     monkeypatch.setattr(task_tool_module.time, "sleep", lambda _: None)
@@ -394,6 +394,11 @@ def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
         task_tool_module,
         "cleanup_background_task",
         lambda task_id: cleanup_calls.append(task_id),
+    )
+    monkeypatch.setattr(
+        task_tool_module,
+        "mark_background_task_timed_out",
+        lambda task_id, error: timeout_marks.append((task_id, error)),
     )
 
     output = task_tool_module.task_tool.func(
@@ -405,5 +410,5 @@ def test_cleanup_not_called_on_polling_safety_timeout(monkeypatch):
     )
 
     assert output.startswith("Task polling timed out after 0 minutes")
-    # cleanup should NOT be called because the task is still RUNNING
-    assert cleanup_calls == []
+    assert timeout_marks and timeout_marks[0][0] == "tc-no-cleanup-safety-timeout"
+    assert cleanup_calls == ["tc-no-cleanup-safety-timeout"]
